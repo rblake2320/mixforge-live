@@ -1,0 +1,44 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const isProduction = process.env.NODE_ENV === "production";
+const host = process.env.HOST || (isProduction ? "0.0.0.0" : "127.0.0.1");
+const port = Number(process.env.PORT || 4173);
+const defaultDataRoot = isProduction ? "/data" : path.join(rootDir, "data");
+const defaultJwtSecret = "mixforge-dev-secret-change-me";
+const demoMode =
+  process.env.MIXFORGE_DEMO_MODE === undefined
+    ? !isProduction
+    : ["1", "true", "yes", "on"].includes(process.env.MIXFORGE_DEMO_MODE.toLowerCase());
+
+export const config = {
+  rootDir,
+  isProduction,
+  publicDir: path.join(rootDir, "public"),
+  host,
+  port,
+  demoMode,
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`,
+  dataRoot: process.env.MIXFORGE_DATA_ROOT || defaultDataRoot,
+  dataFile: process.env.MIXFORGE_DATA_FILE || path.join(process.env.MIXFORGE_DATA_ROOT || defaultDataRoot, "mixforge-db.json"),
+  uploadRoot: process.env.MIXFORGE_UPLOAD_ROOT || path.join(process.env.MIXFORGE_DATA_ROOT || defaultDataRoot, "uploads"),
+  jwtSecret: process.env.JWT_SECRET || defaultJwtSecret,
+  defaultJwtSecret,
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
+  stripePrices: {
+    creator: process.env.STRIPE_PRICE_CREATOR || "",
+    dj_pro: process.env.STRIPE_PRICE_DJ_PRO || "",
+    label: process.env.STRIPE_PRICE_LABEL || ""
+  },
+  stemsplitApiKey: process.env.STEMSPLIT_API_KEY || "",
+  stemsplitWebhookSecret: process.env.STEMSPLIT_WEBHOOK_SECRET || ""
+};

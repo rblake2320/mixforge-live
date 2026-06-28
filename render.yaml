@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: mixforge-live
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_CREATOR
+        sync: false
+      - key: STRIPE_PRICE_DJ_PRO
+        sync: false
+      - key: STRIPE_PRICE_LABEL
+        sync: false
+      - key: STEMSPLIT_API_KEY
+        sync: false
+      - key: STEMSPLIT_WEBHOOK_SECRET
+        sync: false

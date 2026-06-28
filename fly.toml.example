@@ -1,0 +1,24 @@
+# Copy to fly.toml after running `fly launch --no-deploy`, then set app/region.
+app = "mixforge-live"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "4173"
+
+[http_service]
+  internal_port = 4173
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"

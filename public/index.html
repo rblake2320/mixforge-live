@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MixForge — Make Your Sound</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* =============================================
+   DESIGN TOKENS
+   ============================================= */
+:root {
+  --font-body: 'Space Grotesk', 'Helvetica Neue', sans-serif;
+  --font-mono: 'Space Mono', monospace;
+  --font-display: 'Space Grotesk', 'Helvetica Neue', sans-serif;
+
+  --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
+  --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
+  --text-base: clamp(1rem,     0.95rem + 0.25vw, 1.125rem);
+  --text-lg:   clamp(1.125rem, 1rem    + 0.75vw, 1.5rem);
+  --text-xl:   clamp(1.5rem,   1.2rem  + 1.25vw, 2.25rem);
+  --text-2xl:  clamp(2rem,     1.2rem  + 2.5vw,  3.5rem);
+  --text-hero: clamp(2.5rem,   1rem    + 4vw,    5.5rem);
+
+  --space-1:  0.25rem; --space-2:  0.5rem;  --space-3:  0.75rem;
+  --space-4:  1rem;    --space-5:  1.25rem; --space-6:  1.5rem;
+  --space-8:  2rem;    --space-10: 2.5rem;  --space-12: 3rem;
+  --space-16: 4rem;    --space-20: 5rem;    --space-24: 6rem;
+
+  --radius-sm: 0.375rem; --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;  --radius-full: 9999px;
+
+  --content-narrow: 640px; --content-default: 960px;
+  --content-wide: 1200px;
+
+  --transition: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 380ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* DARK MODE (default) */
+[data-theme="dark"], :root {
+  --color-bg:           #0a0a0c;
+  --color-surface:      #111115;
+  --color-surface-2:    #18181f;
+  --color-surface-3:    #1f1f28;
+  --color-border:       rgba(255,255,255,0.08);
+  --color-divider:      rgba(255,255,255,0.06);
+
+  --color-text:         #f0eff8;
+  --color-text-muted:   #8a89a0;
+  --color-text-faint:   #4a4960;
+  --color-text-inverse: #0a0a0c;
+
+  --color-primary:      #7c5cfc;
+  --color-primary-hover:#9b82ff;
+  --color-primary-glow: rgba(124,92,252,0.25);
+  --color-cyan:         #00d4ff;
+  --color-cyan-dim:     rgba(0,212,255,0.15);
+  --color-pink:         #ff4dc4;
+  --color-pink-dim:     rgba(255,77,196,0.15);
+  --color-green:        #00e5a0;
+  --color-green-dim:    rgba(0,229,160,0.15);
+  --color-orange:       #ff8c42;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.6);
+  --shadow-glow: 0 0 40px var(--color-primary-glow);
+}
+
+/* LIGHT MODE */
+[data-theme="light"] {
+  --color-bg:           #f4f3fc;
+  --color-surface:      #ffffff;
+  --color-surface-2:    #f9f8ff;
+  --color-surface-3:    #eeecfa;
+  --color-border:       rgba(0,0,0,0.08);
+  --color-divider:      rgba(0,0,0,0.05);
+  --color-text:         #1a1830;
+  --color-text-muted:   #6b698a;
+  --color-text-faint:   #b0aec8;
+  --color-text-inverse: #f4f3fc;
+  --color-primary:      #6344e0;
+  --color-primary-hover:#7c5cfc;
+  --color-primary-glow: rgba(99,68,224,0.2);
+  --color-cyan:         #0099cc;
+  --color-cyan-dim:     rgba(0,153,204,0.12);
+  --color-pink:         #cc1d8e;
+  --color-pink-dim:     rgba(204,29,142,0.1);
+  --color-green:        #00a870;
+  --color-green-dim:    rgba(0,168,112,0.1);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.1);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.14);
+}
+
+/* =============================================
+   BASE RESET
+   ============================================= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; scroll-padding-top: 88px; }
+body { min-height: 100dvh; font-family: var(--font-body); font-size: var(--text-base); color: var(--color-text); background: var(--color-bg); line-height: 1.6; overflow-x: hidden; }
+img, video { display: block; max-width: 100%; height: auto; }
+ul[role="list"], ol[role="list"] { list-style: none; }
+input, button, textarea, select { font: inherit; color: inherit; }
+h1,h2,h3,h4,h5,h6 { text-wrap: balance; line-height: 1.15; }
+p, li { text-wrap: pretty; max-width: 72ch; }
+button { cursor: pointer; background: none; border: none; }
+a { color: inherit; text-decoration: none; }
+::selection { background: var(--color-primary-glow); color: var(--color-text); }
+:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; border-radius: var(--radius-sm); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* =============================================
+   LAYOUT UTILITIES
+   ============================================= */
+.container { max-width: var(--content-wide); margin-inline: auto; padding-inline: var(--space-6); }
+.container--narrow { max-width: var(--content-default); margin-inline: auto; padding-inline: var(--space-6); }
+.section { padding-block: clamp(var(--space-12), 8vw, var(--space-24)); }
+#modes, #studio, #features, #pricing, #community { scroll-margin-top: 88px; }
+
+/* =============================================
+   NAVIGATION
+   ============================================= */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: var(--space-3) var(--space-6);
+  background: rgba(10,10,12,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--color-border);
+  display: flex; align-items: center; justify-content: space-between;
+  transition: background var(--transition);
+}
+[data-theme="light"] .nav { background: rgba(244,243,252,0.9); }
+
+.nav-logo {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-family: var(--font-display); font-size: var(--text-lg);
+  font-weight: 700; letter-spacing: -0.02em;
+}
+.nav-logo svg { flex-shrink: 0; }
+.logo-text-mix { color: var(--color-primary); }
+.logo-text-forge { color: var(--color-text); }
+
+.nav-links { display: flex; align-items: center; gap: var(--space-8); }
+.nav-links a { font-size: var(--text-sm); color: var(--color-text-muted); transition: color var(--transition); }
+.nav-links a:hover { color: var(--color-text); }
+
+.nav-actions { display: flex; align-items: center; gap: var(--space-3); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-5); border-radius: var(--radius-full);
+  font-size: var(--text-sm); font-weight: 600;
+  transition: all var(--transition); white-space: nowrap;
+  cursor: pointer; border: none;
+}
+.btn-ghost { background: transparent; color: var(--color-text-muted); }
+.btn-ghost:hover { color: var(--color-text); background: var(--color-surface-2); }
+.btn-primary {
+  background: var(--color-primary); color: #fff;
+  box-shadow: 0 0 20px var(--color-primary-glow);
+}
+.btn-primary:hover { background: var(--color-primary-hover); transform: translateY(-1px); box-shadow: 0 0 32px var(--color-primary-glow); }
+.btn-secondary { background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-border); }
+.btn-secondary:hover { background: var(--color-surface-3); transform: translateY(-1px); }
+.btn-lg { padding: var(--space-3) var(--space-8); font-size: var(--text-base); }
+.btn-xl { padding: var(--space-4) var(--space-10); font-size: var(--text-lg); }
+
+.theme-toggle {
+  width: 36px; height: 36px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-text-muted); background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  transition: all var(--transition); cursor: pointer;
+}
+.theme-toggle:hover { color: var(--color-text); background: var(--color-surface-3); }
+
+.hamburger { display: none; flex-direction: column; gap: 5px; padding: var(--space-2); cursor: pointer; }
+.hamburger span { display: block; width: 22px; height: 2px; background: var(--color-text); border-radius: 2px; transition: all var(--transition); }
+
+/* =============================================
+   HERO
+   ============================================= */
+.hero {
+  min-height: 100dvh;
+  display: flex; flex-direction: column; justify-content: center;
+  padding-top: 80px;
+  position: relative; overflow: hidden;
+}
+.hero-bg {
+  position: absolute; inset: 0; z-index: 0;
+  background: var(--color-bg);
+}
+.hero-bg img { width: 100%; height: 100%; object-fit: cover; opacity: 0.35; }
+.hero-gradient {
+  position: absolute; inset: 0; z-index: 1;
+  background: radial-gradient(ellipse 60% 50% at 50% 60%, rgba(124,92,252,0.15) 0%, transparent 70%),
+              radial-gradient(ellipse 40% 30% at 20% 80%, rgba(0,212,255,0.08) 0%, transparent 60%),
+              linear-gradient(to bottom, transparent 50%, var(--color-bg) 100%);
+}
+.hero-content {
+  position: relative; z-index: 2;
+  max-width: var(--content-wide); margin-inline: auto; padding-inline: var(--space-6);
+  padding-top: var(--space-16);
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-16); align-items: center;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) var(--space-4); border-radius: var(--radius-full);
+  background: var(--color-primary-glow); border: 1px solid rgba(124,92,252,0.3);
+  font-size: var(--text-xs); font-weight: 600; color: var(--color-primary);
+  margin-bottom: var(--space-6); width: fit-content; text-transform: uppercase; letter-spacing: 0.08em;
+}
+[data-theme="light"] .hero-badge { color: var(--color-primary); background: rgba(99,68,224,0.1); }
+.hero-title {
+  font-size: var(--text-hero); font-weight: 700;
+  line-height: 1.05; letter-spacing: -0.03em;
+  margin-bottom: var(--space-6);
+}
+.hero-title .accent {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-cyan) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero-desc { font-size: var(--text-lg); color: var(--color-text-muted); margin-bottom: var(--space-8); max-width: 48ch; line-height: 1.7; }
+.hero-actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.hero-social-proof { margin-top: var(--space-8); display: flex; align-items: center; gap: var(--space-4); }
+.avatar-stack { display: flex; }
+.avatar-stack span {
+  width: 32px; height: 32px; border-radius: var(--radius-full);
+  border: 2px solid var(--color-bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  background: var(--color-surface-3);
+  margin-left: -8px;
+}
+.avatar-stack span:first-child { margin-left: 0; }
+.social-text { font-size: var(--text-sm); color: var(--color-text-muted); }
+.social-text strong { color: var(--color-text); }
+
+/* Hero visual / player card */
+.hero-visual { display: flex; justify-content: flex-end; }
+.player-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6);
+  width: 100%; max-width: 400px;
+  box-shadow: var(--shadow-lg), 0 0 60px var(--color-primary-glow);
+}
+.player-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); }
+.player-mode-pills { display: flex; gap: var(--space-2); }
+.mode-pill {
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);
+  font-size: var(--text-xs); font-weight: 600; cursor: pointer;
+  border: 1px solid var(--color-border); color: var(--color-text-muted);
+  transition: all var(--transition);
+}
+.mode-pill.active {
+  background: var(--color-primary); color: #fff; border-color: var(--color-primary);
+  box-shadow: 0 0 12px var(--color-primary-glow);
+}
+.player-track { margin-bottom: var(--space-5); }
+.track-art {
+  width: 100%; aspect-ratio: 16/9; border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--color-surface-3) 0%, var(--color-surface-2) 100%);
+  margin-bottom: var(--space-4);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.track-art-inner {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(124,92,252,0.3) 0%, rgba(0,212,255,0.2) 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+.waveform-bars { display: flex; align-items: center; gap: 3px; }
+.waveform-bars span {
+  display: block; width: 4px; background: rgba(255,255,255,0.6); border-radius: 2px;
+  animation: barBounce 1.2s ease-in-out infinite;
+}
+.waveform-bars span:nth-child(1) { height: 20px; animation-delay: 0s; }
+.waveform-bars span:nth-child(2) { height: 40px; animation-delay: 0.1s; }
+.waveform-bars span:nth-child(3) { height: 55px; animation-delay: 0.2s; }
+.waveform-bars span:nth-child(4) { height: 35px; animation-delay: 0.3s; }
+.waveform-bars span:nth-child(5) { height: 48px; animation-delay: 0.15s; }
+.waveform-bars span:nth-child(6) { height: 30px; animation-delay: 0.25s; }
+.waveform-bars span:nth-child(7) { height: 42px; animation-delay: 0.05s; }
+.waveform-bars span:nth-child(8) { height: 22px; animation-delay: 0.35s; }
+@keyframes barBounce {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.track-info { display: flex; justify-content: space-between; align-items: flex-start; }
+.track-name { font-weight: 600; font-size: var(--text-base); margin-bottom: var(--space-1); }
+.track-meta { font-size: var(--text-xs); color: var(--color-text-muted); }
+.track-bpm {
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  padding: 2px var(--space-2); border-radius: var(--radius-sm);
+  background: var(--color-cyan-dim); color: var(--color-cyan); border: 1px solid rgba(0,212,255,0.2);
+}
+.progress-bar-wrap { margin: var(--space-4) 0; }
+.progress-bar {
+  height: 4px; background: var(--color-surface-3); border-radius: var(--radius-full);
+  position: relative; cursor: pointer;
+}
+.progress-bar-fill {
+  height: 100%; border-radius: var(--radius-full); width: 38%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-cyan));
+  position: relative;
+}
+.progress-bar-fill::after {
+  content: ''; position: absolute; right: -5px; top: 50%; transform: translateY(-50%);
+  width: 10px; height: 10px; border-radius: var(--radius-full);
+  background: white; box-shadow: 0 0 6px var(--color-primary);
+}
+.player-controls { display: flex; align-items: center; justify-content: space-between; }
+.ctrl-btn {
+  width: 36px; height: 36px; border-radius: var(--radius-full); display: flex;
+  align-items: center; justify-content: center; color: var(--color-text-muted);
+  transition: all var(--transition); cursor: pointer;
+}
+.ctrl-btn:hover { color: var(--color-text); background: var(--color-surface-2); }
+.play-btn {
+  width: 52px; height: 52px; border-radius: var(--radius-full);
+  background: var(--color-primary); color: white; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 24px var(--color-primary-glow); transition: all var(--transition); cursor: pointer;
+}
+.play-btn:hover { background: var(--color-primary-hover); transform: scale(1.05); }
+.volume-section { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
+.volume-label { font-size: var(--text-xs); color: var(--color-text-muted); width: 50px; }
+.volume-slider { flex: 1; height: 3px; background: var(--color-surface-3); border-radius: var(--radius-full); appearance: none; cursor: pointer; }
+.autotune-row {
+  margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-divider);
+  display: flex; gap: var(--space-2); align-items: center;
+}
+.autotune-label { font-size: var(--text-xs); color: var(--color-text-muted); margin-right: auto; }
+.autotune-chip {
+  padding: 3px var(--space-3); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 600;
+  border: 1px solid var(--color-border); color: var(--color-text-muted); cursor: pointer;
+  transition: all var(--transition);
+}
+.autotune-chip.on { background: var(--color-pink-dim); border-color: rgba(255,77,196,0.3); color: var(--color-pink); }
+
+/* =============================================
+   MODE SELECTOR
+   ============================================= */
+.modes-section { padding-block: var(--space-12); background: var(--color-surface); border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider); }
+.modes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); max-width: var(--content-wide); margin-inline: auto; padding-inline: var(--space-6); }
+.mode-card {
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-6);
+  cursor: pointer; transition: all var(--transition);
+  position: relative; overflow: hidden;
+}
+.mode-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: rgba(255,255,255,0.15); }
+.mode-card.active { border-color: var(--color-primary); box-shadow: 0 0 24px var(--color-primary-glow); }
+.mode-card-glow {
+  position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+  border-radius: var(--radius-full); opacity: 0;
+  transition: opacity var(--transition-slow);
+  pointer-events: none;
+}
+.mode-card:hover .mode-card-glow, .mode-card.active .mode-card-glow { opacity: 1; }
+.mode-everyday .mode-card-glow { background: radial-gradient(circle, rgba(0,229,160,0.08) 0%, transparent 70%); }
+.mode-creator .mode-card-glow { background: radial-gradient(circle, rgba(124,92,252,0.08) 0%, transparent 70%); }
+.mode-dj .mode-card-glow { background: radial-gradient(circle, rgba(0,212,255,0.08) 0%, transparent 70%); }
+
+.mode-icon {
+  width: 48px; height: 48px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; margin-bottom: var(--space-4);
+}
+.mode-everyday .mode-icon { background: var(--color-green-dim); color: var(--color-green); }
+.mode-creator .mode-icon { background: var(--color-primary-glow); color: var(--color-primary); }
+.mode-dj .mode-icon { background: var(--color-cyan-dim); color: var(--color-cyan); }
+
+.mode-title { font-size: var(--text-lg); font-weight: 700; margin-bottom: var(--space-2); }
+.mode-desc { font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.6; margin-bottom: var(--space-4); }
+.mode-features { display: flex; flex-direction: column; gap: var(--space-2); }
+.mode-feature {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-xs); color: var(--color-text-muted);
+}
+.mode-feature::before { content: ''; display: block; width: 6px; height: 6px; border-radius: var(--radius-full); flex-shrink: 0; }
+.mode-everyday .mode-feature::before { background: var(--color-green); }
+.mode-creator .mode-feature::before { background: var(--color-primary); }
+.mode-dj .mode-feature::before { background: var(--color-cyan); }
+.mode-tag {
+  position: absolute; top: var(--space-4); right: var(--space-4);
+  padding: 2px var(--space-3); border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 700;
+}
+.tag-free { background: var(--color-green-dim); color: var(--color-green); }
+.tag-plus { background: var(--color-primary-glow); color: var(--color-primary); }
+.tag-pro { background: var(--color-cyan-dim); color: var(--color-cyan); }
+
+/* =============================================
+   STUDIO SECTION (interactive demo)
+   ============================================= */
+.studio-section { padding-block: clamp(var(--space-16), 8vw, var(--space-24)); }
+.section-label {
+  font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--color-primary); margin-bottom: var(--space-4);
+}
+.section-title { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; margin-bottom: var(--space-4); }
+.section-desc { font-size: var(--text-lg); color: var(--color-text-muted); max-width: 52ch; line-height: 1.7; margin-bottom: var(--space-10); }
+
+.studio-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); border-bottom: 1px solid var(--color-divider); }
+.studio-tab {
+  padding: var(--space-3) var(--space-5); font-size: var(--text-sm); font-weight: 600;
+  color: var(--color-text-muted); cursor: pointer; border: none; background: none;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all var(--transition);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.studio-tab:hover { color: var(--color-text); }
+.studio-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+.studio-panel { display: none; }
+.studio-panel.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Vocal Booth Panel */
+.vocal-booth {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl); padding: var(--space-8);
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8);
+}
+.booth-left { display: flex; flex-direction: column; gap: var(--space-5); }
+.booth-beat-select {
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); overflow: hidden;
+}
+.booth-beat-header {
+  padding: var(--space-4); display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--color-divider);
+}
+.booth-beat-header h4 { font-weight: 600; font-size: var(--text-sm); }
+.beat-list { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); max-height: 200px; overflow-y: auto; }
+.beat-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3); border-radius: var(--radius-lg); cursor: pointer;
+  transition: background var(--transition);
+}
+.beat-item:hover { background: var(--color-surface-3); }
+.beat-item.active { background: var(--color-primary-glow); }
+.beat-thumb {
+  width: 40px; height: 40px; border-radius: var(--radius-md); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+}
+.beat-name { font-size: var(--text-sm); font-weight: 600; margin-bottom: 2px; }
+.beat-genre { font-size: var(--text-xs); color: var(--color-text-muted); }
+.beat-bpm { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-cyan); margin-left: auto; }
+
+.autotune-panel {
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-5);
+}
+.autotune-panel h4 { font-weight: 600; font-size: var(--text-sm); margin-bottom: var(--space-4); }
+.autotune-presets { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.preset-btn {
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-lg);
+  font-size: var(--text-xs); font-weight: 600; cursor: pointer;
+  background: var(--color-surface-3); border: 1px solid var(--color-border);
+  color: var(--color-text-muted); transition: all var(--transition); text-align: center;
+}
+.preset-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--color-text); }
+.preset-btn.active { background: var(--color-primary-glow); border-color: rgba(124,92,252,0.4); color: var(--color-primary); }
+
+.booth-right { display: flex; flex-direction: column; gap: var(--space-5); }
+.record-zone {
+  flex: 1; background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-6);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4);
+  min-height: 260px;
+}
+.record-btn-outer {
+  width: 100px; height: 100px; border-radius: var(--radius-full);
+  background: var(--color-primary-glow); border: 2px solid rgba(124,92,252,0.3);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: all var(--transition-slow);
+}
+.record-btn-outer:hover { background: rgba(124,92,252,0.3); transform: scale(1.05); }
+.record-btn-outer.recording {
+  background: rgba(255,77,77,0.2); border-color: rgba(255,77,77,0.5);
+  animation: recordPulse 1.5s ease-in-out infinite;
+}
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,77,77,0.4); }
+  50% { box-shadow: 0 0 0 16px rgba(255,77,77,0); }
+}
+.record-btn-inner {
+  width: 60px; height: 60px; border-radius: var(--radius-full);
+  background: var(--color-primary); display: flex; align-items: center; justify-content: center;
+  transition: background var(--transition);
+}
+.record-btn-outer.recording .record-btn-inner { background: #ff4d4d; }
+.record-label { font-size: var(--text-sm); color: var(--color-text-muted); font-weight: 600; }
+.record-timer { font-family: var(--font-mono); font-size: var(--text-xl); color: var(--color-text); }
+.record-status { font-size: var(--text-xs); color: var(--color-text-faint); }
+
+.voice-level {
+  width: 100%; height: 6px; background: var(--color-surface-3); border-radius: var(--radius-full); overflow: hidden;
+}
+.voice-level-fill {
+  height: 100%; border-radius: var(--radius-full); width: 0%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-cyan));
+  transition: width 0.05s ease;
+}
+
+/* Mashup Panel */
+.mashup-panel {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl); padding: var(--space-8);
+}
+.mashup-tracks { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--space-4); align-items: start; margin-bottom: var(--space-8); }
+.mashup-track-card {
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-5);
+}
+.mashup-track-label {
+  font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: var(--space-3);
+}
+.track-a-label { color: var(--color-pink); }
+.track-b-label { color: var(--color-cyan); }
+.track-select {
+  width: 100%; padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-3); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); color: var(--color-text);
+  font-size: var(--text-sm); font-family: var(--font-body);
+  appearance: none; cursor: pointer; margin-bottom: var(--space-3);
+  transition: border-color var(--transition);
+}
+.track-select:focus { border-color: var(--color-primary); outline: none; }
+.stem-toggle-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.stem-chip {
+  padding: 3px var(--space-3); border-radius: var(--radius-full);
+  font-size: var(--text-xs); font-weight: 600; cursor: pointer;
+  background: var(--color-surface-3); border: 1px solid var(--color-border);
+  color: var(--color-text-muted); transition: all var(--transition);
+}
+.stem-chip.active.vocals { background: var(--color-pink-dim); border-color: rgba(255,77,196,0.3); color: var(--color-pink); }
+.stem-chip.active.beat { background: var(--color-cyan-dim); border-color: rgba(0,212,255,0.3); color: var(--color-cyan); }
+.stem-chip.active.bass { background: var(--color-green-dim); border-color: rgba(0,229,160,0.3); color: var(--color-green); }
+.stem-chip.active.other { background: var(--color-primary-glow); border-color: rgba(124,92,252,0.3); color: var(--color-primary); }
+
+.mashup-plus {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: var(--radius-full);
+  background: var(--color-surface-3); border: 1px solid var(--color-border);
+  font-size: 24px; color: var(--color-text-muted); align-self: center; margin-top: var(--space-8);
+}
+.mashup-controls { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.mashup-key-match {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--color-text-muted);
+}
+.toggle-switch {
+  width: 36px; height: 20px; background: var(--color-surface-3);
+  border-radius: var(--radius-full); cursor: pointer; position: relative;
+  border: 1px solid var(--color-border); transition: background var(--transition);
+}
+.toggle-switch.on { background: var(--color-primary); }
+.toggle-knob {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: var(--radius-full); background: white; transition: transform var(--transition);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.toggle-switch.on .toggle-knob { transform: translateX(16px); }
+.mashup-status {
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-full);
+  font-size: var(--text-xs); font-weight: 600;
+  background: var(--color-green-dim); color: var(--color-green);
+  border: 1px solid rgba(0,229,160,0.2);
+}
+
+/* DJ Mode Panel */
+.dj-panel {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl); padding: var(--space-6); overflow: hidden;
+}
+.dj-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); }
+.dj-pro-badge {
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);
+  background: var(--color-cyan-dim); color: var(--color-cyan);
+  font-size: var(--text-xs); font-weight: 700; border: 1px solid rgba(0,212,255,0.25);
+}
+.dj-decks { display: grid; grid-template-columns: 1fr 200px 1fr; gap: var(--space-4); }
+.deck {
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-5);
+}
+.deck-a { border-top: 2px solid var(--color-pink); }
+.deck-b { border-top: 2px solid var(--color-cyan); }
+.deck-label { font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--space-3); }
+.deck-a .deck-label { color: var(--color-pink); }
+.deck-b .deck-label { color: var(--color-cyan); }
+.platter {
+  width: 100%; aspect-ratio: 1/1; border-radius: var(--radius-full);
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border);
+  position: relative; margin: 0 auto var(--space-4); max-width: 140px;
+  cursor: grab; overflow: hidden;
+}
+.platter-ring {
+  position: absolute; border-radius: var(--radius-full); border: 1px solid rgba(255,255,255,0.06);
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+.platter-center {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 30%; height: 30%; border-radius: var(--radius-full);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  display: flex; align-items: center; justify-content: center; font-size: 12px;
+}
+.deck-track-name { font-size: var(--text-xs); font-weight: 600; text-align: center; margin-bottom: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-bpm-key { display: flex; gap: var(--space-2); justify-content: center; margin-bottom: var(--space-3); }
+.bpm-badge, .key-badge {
+  font-family: var(--font-mono); font-size: var(--text-xs); padding: 2px var(--space-2);
+  border-radius: var(--radius-sm); border: 1px solid var(--color-border);
+  background: var(--color-surface-3);
+}
+.deck-controls { display: flex; justify-content: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.deck-btn { width: 32px; height: 32px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all var(--transition); }
+.deck-btn-play { background: var(--color-primary); color: white; }
+.deck-btn-play:hover { background: var(--color-primary-hover); }
+.deck-btn-cue { background: var(--color-surface-3); color: var(--color-text-muted); }
+.deck-btn-cue:hover { background: var(--color-cyan-dim); color: var(--color-cyan); }
+.pitch-slider-wrap { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); }
+.pitch-slider { flex: 1; height: 3px; border-radius: var(--radius-full); appearance: none; background: var(--color-surface-3); cursor: pointer; }
+
+.mixer-panel {
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-5);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-4);
+}
+.mixer-eq { display: flex; flex-direction: column; gap: var(--space-3); width: 100%; }
+.eq-row { display: flex; align-items: center; gap: var(--space-2); }
+.eq-label { font-size: var(--text-xs); color: var(--color-text-muted); width: 24px; text-align: center; font-family: var(--font-mono); }
+.eq-slider { flex: 1; height: 3px; border-radius: var(--radius-full); appearance: none; background: var(--color-surface-3); cursor: pointer; }
+.crossfader-section { width: 100%; }
+.crossfader-label { font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; margin-bottom: var(--space-2); display: flex; justify-content: space-between; }
+.crossfader { width: 100%; height: 6px; border-radius: var(--radius-full); appearance: none; background: linear-gradient(90deg, var(--color-pink), var(--color-surface-3), var(--color-cyan)); cursor: pointer; }
+.effects-row { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; }
+.fx-btn {
+  padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);
+  font-size: var(--text-xs); font-weight: 600; cursor: pointer; border: 1px solid var(--color-border);
+  background: var(--color-surface-3); color: var(--color-text-muted); transition: all var(--transition);
+}
+.fx-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.fx-btn.active { background: var(--color-primary-glow); border-color: rgba(124,92,252,0.4); color: var(--color-primary); }
+
+/* =============================================
+   FEATURES GRID
+   ============================================= */
+.features-section { background: var(--color-surface); padding-block: clamp(var(--space-16), 8vw, var(--space-24)); border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider); }
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+.feature-card {
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-6);
+  transition: all var(--transition);
+}
+.feature-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+[data-theme="light"] .feature-card:hover { border-color: rgba(0,0,0,0.12); }
+.feature-icon { font-size: 32px; margin-bottom: var(--space-4); }
+.feature-title { font-size: var(--text-base); font-weight: 700; margin-bottom: var(--space-2); }
+.feature-desc { font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.6; }
+
+/* =============================================
+   PRICING
+   ============================================= */
+.pricing-section { padding-block: clamp(var(--space-16), 8vw, var(--space-24)); }
+.pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+.pricing-card {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-6); position: relative;
+  transition: all var(--transition);
+}
+.pricing-card.featured {
+  border-color: var(--color-primary); background: var(--color-surface-2);
+  box-shadow: 0 0 32px var(--color-primary-glow);
+}
+.pricing-card:hover { transform: translateY(-3px); }
+.pricing-badge {
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  padding: 4px var(--space-4); border-radius: var(--radius-full);
+  background: var(--color-primary); color: white; font-size: var(--text-xs); font-weight: 700;
+  white-space: nowrap;
+}
+.plan-name { font-size: var(--text-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: var(--space-3); }
+.plan-price { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1; margin-bottom: var(--space-1); }
+.plan-price span { font-size: var(--text-sm); font-weight: 400; color: var(--color-text-muted); }
+.plan-tagline { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-6); }
+.plan-features { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-6); }
+.plan-feature { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); }
+.plan-feature .check { color: var(--color-green); flex-shrink: 0; margin-top: 2px; }
+.plan-feature .x { color: var(--color-text-faint); flex-shrink: 0; margin-top: 2px; }
+
+/* =============================================
+   COMMUNITY FEED (preview)
+   ============================================= */
+.community-section { background: var(--color-surface); padding-block: clamp(var(--space-16), 8vw, var(--space-24)); border-top: 1px solid var(--color-divider); }
+.community-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+.community-card {
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-5);
+  transition: all var(--transition); cursor: pointer;
+}
+.community-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-2px); }
+[data-theme="light"] .community-card:hover { border-color: rgba(0,0,0,0.12); }
+.community-card-top { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.avatar { width: 40px; height: 40px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.user-name { font-size: var(--text-sm); font-weight: 700; margin-bottom: 2px; }
+.user-tag { font-size: var(--text-xs); color: var(--color-text-muted); }
+.track-preview {
+  background: var(--color-surface-2); border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-3);
+}
+.mini-waveform { flex: 1; height: 32px; background: var(--color-surface-3); border-radius: var(--radius-sm); position: relative; overflow: hidden; }
+.mini-waveform-bars { display: flex; align-items: center; gap: 2px; height: 100%; padding: var(--space-1); }
+.mini-waveform-bars span { display: block; flex: 1; background: rgba(124,92,252,0.5); border-radius: 1px; }
+.play-mini {
+  width: 32px; height: 32px; border-radius: var(--radius-full);
+  background: var(--color-primary); color: white;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: all var(--transition);
+}
+.play-mini:hover { background: var(--color-primary-hover); transform: scale(1.1); }
+.community-meta { display: flex; gap: var(--space-4); }
+.meta-item { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); color: var(--color-text-muted); }
+.tag-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+.tag-chip {
+  padding: 2px var(--space-3); border-radius: var(--radius-full);
+  font-size: var(--text-xs); background: var(--color-surface-2);
+  border: 1px solid var(--color-border); color: var(--color-text-muted);
+}
+
+/* =============================================
+   CTA SECTION
+   ============================================= */
+.cta-section {
+  padding-block: clamp(var(--space-16), 10vw, var(--space-24));
+  text-align: center; position: relative; overflow: hidden;
+}
+.cta-glow {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 600px; height: 300px; border-radius: var(--radius-full);
+  background: radial-gradient(ellipse, var(--color-primary-glow) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cta-title { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; margin-bottom: var(--space-4); }
+.cta-desc { font-size: var(--text-lg); color: var(--color-text-muted); margin-bottom: var(--space-8); max-width: 44ch; margin-inline: auto; }
+.cta-actions { display: flex; gap: var(--space-3); justify-content: center; flex-wrap: wrap; }
+
+/* =============================================
+   FOOTER
+   ============================================= */
+.footer { background: var(--color-surface); border-top: 1px solid var(--color-divider); padding-block: var(--space-12); }
+.footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: var(--space-8); margin-bottom: var(--space-8); }
+.footer-brand { }
+.footer-logo { display: flex; align-items: center; gap: var(--space-2); font-weight: 700; font-size: var(--text-lg); margin-bottom: var(--space-4); }
+.footer-desc { font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.7; max-width: 32ch; }
+.footer-col h5 { font-size: var(--text-sm); font-weight: 700; margin-bottom: var(--space-4); }
+.footer-links { display: flex; flex-direction: column; gap: var(--space-3); }
+.footer-links a { font-size: var(--text-sm); color: var(--color-text-muted); transition: color var(--transition); }
+.footer-links a:hover { color: var(--color-text); }
+.footer-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: var(--space-6); border-top: 1px solid var(--color-divider); }
+.footer-copy { font-size: var(--text-xs); color: var(--color-text-faint); }
+.footer-legal { display: flex; gap: var(--space-4); }
+.footer-legal a { font-size: var(--text-xs); color: var(--color-text-faint); transition: color var(--transition); }
+.footer-legal a:hover { color: var(--color-text-muted); }
+
+/* =============================================
+   MOBILE NAV
+   ============================================= */
+.mobile-nav {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 200;
+  background: var(--color-bg); flex-direction: column; padding: var(--space-6);
+}
+.mobile-nav.open { display: flex; }
+.mobile-nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-8); }
+.mobile-nav-links { display: flex; flex-direction: column; gap: var(--space-4); }
+.mobile-nav-links a { font-size: var(--text-xl); font-weight: 700; color: var(--color-text); }
+.mobile-nav-actions { margin-top: auto; display: flex; flex-direction: column; gap: var(--space-3); }
+.mobile-nav-actions .btn { justify-content: center; }
+
+/* =============================================
+   RESPONSIVE
+   ============================================= */
+@media (max-width: 1024px) {
+  .pricing-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .nav-links, .nav-actions .btn-ghost { display: none; }
+  .hamburger { display: flex; }
+  .hero-content { grid-template-columns: 1fr; }
+  .hero-visual { display: none; }
+  .modes-grid { grid-template-columns: 1fr; }
+  .vocal-booth { grid-template-columns: 1fr; }
+  .mashup-tracks { grid-template-columns: 1fr; }
+  .mashup-plus { display: none; }
+  .dj-decks { grid-template-columns: 1fr; }
+  .mixer-panel { display: none; }
+  .features-grid { grid-template-columns: 1fr 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; }
+  .community-grid { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: 1fr 1fr; }
+  .footer-bottom { flex-direction: column; gap: var(--space-3); text-align: center; }
+}
+@media (max-width: 480px) {
+  .features-grid { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: 1fr; }
+  .hero-title { font-size: clamp(2.2rem, 8vw, 3.5rem); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-surface); }
+::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: var(--radius-full); }
+
+/* Slider thumb */
+input[type="range"] { -webkit-appearance: none; cursor: pointer; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: white; box-shadow: 0 0 4px rgba(0,0,0,0.4); }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <a href="#" class="nav-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="MixForge logo">
+      <rect width="28" height="28" rx="8" fill="#7c5cfc"/>
+      <path d="M7 20 L11 8 L15 16 L17 12 L21 20" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <circle cx="21" cy="10" r="2.5" fill="#00d4ff"/>
+    </svg>
+    <span><span class="logo-text-mix">Mix</span><span class="logo-text-forge">Forge</span></span>
+  </a>
+  <div class="nav-links">
+    <a href="#modes">Modes</a>
+    <a href="#studio">Studio</a>
+    <a href="#features">Features</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#community">Community</a>
+  </div>
+  <div class="nav-actions">
+    <button class="theme-toggle" data-theme-toggle aria-label="Switch theme">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <a href="#" class="btn btn-ghost">Log in</a>
+    <a href="#" class="btn btn-primary">Start Free</a>
+  </div>
+  <button class="hamburger" id="hamburger" aria-label="Open menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- MOBILE NAV -->
+<div class="mobile-nav" id="mobileNav">
+  <div class="mobile-nav-header">
+    <div class="nav-logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="8" fill="#7c5cfc"/><path d="M7 20 L11 8 L15 16 L17 12 L21 20" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="21" cy="10" r="2.5" fill="#00d4ff"/></svg>
+      <span><span class="logo-text-mix">Mix</span><span class="logo-text-forge">Forge</span></span>
+    </div>
+    <button id="closeNav" style="font-size:24px;color:var(--color-text);">✕</button>
+  </div>
+  <nav class="mobile-nav-links">
+    <a href="#modes" onclick="closeMobileNav()">Modes</a>
+    <a href="#studio" onclick="closeMobileNav()">Studio</a>
+    <a href="#features" onclick="closeMobileNav()">Features</a>
+    <a href="#pricing" onclick="closeMobileNav()">Pricing</a>
+    <a href="#community" onclick="closeMobileNav()">Community</a>
+  </nav>
+  <div class="mobile-nav-actions">
+    <a href="#" class="btn btn-secondary btn-lg">Log in</a>
+    <a href="#" class="btn btn-primary btn-lg">Start Free</a>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg">
+    <img src="https://user-gen-media-assets.s3.amazonaws.com/gpt4o_images/f1eceff1-fb99-483e-acfe-e298f122e2ee.png" alt="" aria-hidden="true" width="1920" height="1080" loading="eager">
+  </div>
+  <div class="hero-gradient"></div>
+  <div class="hero-content">
+    <div class="hero-text">
+      <div class="hero-badge">🎵 Your sound, your way</div>
+      <h1 class="hero-title">Make music<br><span class="accent">your way.</span></h1>
+      <p class="hero-desc">Record your vocals, remix songs, swap beats, add autotune — no experience needed. Pro tools built in when you're ready for them.</p>
+      <div class="hero-actions">
+        <a href="#studio" class="btn btn-primary btn-xl">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          Start Creating Free
+        </a>
+        <a href="#modes" class="btn btn-secondary btn-xl">Explore Modes</a>
+      </div>
+      <div class="hero-social-proof">
+        <div class="avatar-stack">
+          <span>🎤</span><span>🎧</span><span>🎹</span><span>🎸</span>
+        </div>
+        <p class="social-text"><strong>Join thousands</strong> already making mixes today</p>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="player-card">
+        <div class="player-card-header">
+          <div class="player-mode-pills">
+            <button class="mode-pill active" onclick="setModeActive(this)">Easy</button>
+            <button class="mode-pill" onclick="setModeActive(this)">Creator</button>
+            <button class="mode-pill" onclick="setModeActive(this)">DJ</button>
+          </div>
+          <span style="font-size:var(--text-xs);color:var(--color-text-muted);">LIVE</span>
+        </div>
+        <div class="player-track">
+          <div class="track-art">
+            <div class="track-art-inner">
+              <div class="waveform-bars">
+                <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+          <div class="track-info">
+            <div>
+              <div class="track-name">My Track — Remix</div>
+              <div class="track-meta">Trap Vocal Edit • 2:34</div>
+            </div>
+            <div class="track-bpm">128 BPM</div>
+          </div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progressBar" onclick="seekProgress(event, this)">
+            <div class="progress-bar-fill" id="progressFill"></div>
+          </div>
+        </div>
+        <div class="player-controls">
+          <button class="ctrl-btn" title="Shuffle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+          </button>
+          <button class="ctrl-btn" title="Previous">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <button class="play-btn" id="heroPlay" onclick="togglePlay()" title="Play/Pause">
+            <svg id="heroPlayIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+          <button class="ctrl-btn" title="Next">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+          <button class="ctrl-btn" title="Repeat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </button>
+        </div>
+        <div class="volume-section">
+          <div class="volume-label" style="font-size:var(--text-xs);color:var(--color-text-muted);">VOL</div>
+          <input type="range" class="volume-slider" min="0" max="100" value="75">
+        </div>
+        <div class="autotune-row">
+          <span class="autotune-label">Autotune</span>
+          <button class="autotune-chip" onclick="toggleAutotune(this)">Natural</button>
+          <button class="autotune-chip active on" onclick="toggleAutotune(this)">Trap</button>
+          <button class="autotune-chip" onclick="toggleAutotune(this)">Hard</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MODES -->
+<section class="modes-section" id="modes">
+  <div class="modes-grid">
+    <div class="mode-card mode-everyday active" onclick="selectMode(this)">
+      <div class="mode-card-glow"></div>
+      <span class="mode-tag tag-free">Free</span>
+      <div class="mode-icon">🎤</div>
+      <div class="mode-title">Everyday Mode</div>
+      <p class="mode-desc">For anyone who wants to make something cool. No experience needed — just pick a beat and start creating.</p>
+      <ul class="mode-features" role="list">
+        <li class="mode-feature">Record vocals over any beat</li>
+        <li class="mode-feature">One-tap autotune presets</li>
+        <li class="mode-feature">Simple mashup creator</li>
+        <li class="mode-feature">Share to social instantly</li>
+        <li class="mode-feature">Beat library (500+ tracks)</li>
+      </ul>
+    </div>
+    <div class="mode-card mode-creator" onclick="selectMode(this)">
+      <div class="mode-card-glow"></div>
+      <span class="mode-tag tag-plus">Plus</span>
+      <div class="mode-icon">🎛️</div>
+      <div class="mode-title">Creator Mode</div>
+      <p class="mode-desc">For serious hobbyists and emerging artists who want more control and better tools.</p>
+      <ul class="mode-features" role="list">
+        <li class="mode-feature">Multi-track studio</li>
+        <li class="mode-feature">AI stem separation</li>
+        <li class="mode-feature">Effects chains & EQ</li>
+        <li class="mode-feature">Sell beats & vocal packs</li>
+        <li class="mode-feature">Collaboration tools</li>
+      </ul>
+    </div>
+    <div class="mode-card mode-dj" onclick="selectMode(this)">
+      <div class="mode-card-glow"></div>
+      <span class="mode-tag tag-pro">DJ Pro</span>
+      <div class="mode-icon">🎧</div>
+      <div class="mode-title">DJ Mode</div>
+      <p class="mode-desc">Full club-grade DJ tools. Dual decks, real scratch controls, BPM sync, cue points, and live transitions.</p>
+      <ul class="mode-features" role="list">
+        <li class="mode-feature">Dual deck interface</li>
+        <li class="mode-feature">Scratch & crossfader</li>
+        <li class="mode-feature">Cue points & loops</li>
+        <li class="mode-feature">Live stem mute/solo</li>
+        <li class="mode-feature">Client event folders</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- STUDIO -->
+<section class="studio-section section" id="studio">
+  <div class="container--narrow">
+    <div class="section-label">Interactive Studio</div>
+    <h2 class="section-title">Your sound, built here.</h2>
+    <p class="section-desc">Everything you need from a quick vocal take to a full DJ set — pick your workflow.</p>
+    <div class="studio-tabs">
+      <button class="studio-tab active" onclick="switchTab('vocal', this)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+        Vocal Booth
+      </button>
+      <button class="studio-tab" onclick="switchTab('mashup', this)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+        Mashup
+      </button>
+      <button class="studio-tab" onclick="switchTab('dj', this)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+        DJ Mode
+      </button>
+    </div>
+
+    <!-- VOCAL BOOTH PANEL -->
+    <div class="studio-panel active" id="panel-vocal">
+      <div class="vocal-booth">
+        <div class="booth-left">
+          <div class="booth-beat-select">
+            <div class="booth-beat-header">
+              <h4>Choose a Beat</h4>
+              <button class="btn btn-secondary" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Browse All</button>
+            </div>
+            <div class="beat-list">
+              <div class="beat-item active" onclick="selectBeat(this)">
+                <div class="beat-thumb" style="background:var(--color-pink-dim);">🔥</div>
+                <div><div class="beat-name">Dark Trap</div><div class="beat-genre">Trap / Hip-Hop</div></div>
+                <div class="beat-bpm">140</div>
+              </div>
+              <div class="beat-item" onclick="selectBeat(this)">
+                <div class="beat-thumb" style="background:var(--color-cyan-dim);">🌊</div>
+                <div><div class="beat-name">Lo-fi Chill</div><div class="beat-genre">Lo-fi / R&B</div></div>
+                <div class="beat-bpm">85</div>
+              </div>
+              <div class="beat-item" onclick="selectBeat(this)">
+                <div class="beat-thumb" style="background:var(--color-green-dim);">⚡</div>
+                <div><div class="beat-name">Afrobeats Bounce</div><div class="beat-genre">Afro / Pop</div></div>
+                <div class="beat-bpm">107</div>
+              </div>
+              <div class="beat-item" onclick="selectBeat(this)">
+                <div class="beat-thumb" style="background:var(--color-primary-glow);">🎹</div>
+                <div><div class="beat-name">Pop Drill</div><div class="beat-genre">Drill / Pop</div></div>
+                <div class="beat-bpm">124</div>
+              </div>
+              <div class="beat-item" onclick="selectBeat(this)">
+                <div class="beat-thumb" style="background:rgba(255,140,66,0.15);">🎸</div>
+                <div><div class="beat-name">Guitar R&B</div><div class="beat-genre">R&B / Soul</div></div>
+                <div class="beat-bpm">96</div>
+              </div>
+            </div>
+          </div>
+          <div class="autotune-panel">
+            <h4>Pitch Correction Style</h4>
+            <div class="autotune-presets">
+              <button class="preset-btn active" onclick="selectPreset(this)">Natural</button>
+              <button class="preset-btn" onclick="selectPreset(this)">Trap Tune</button>
+              <button class="preset-btn" onclick="selectPreset(this)">Hard Tune</button>
+              <button class="preset-btn" onclick="selectPreset(this)">R&B Smooth</button>
+              <button class="preset-btn" onclick="selectPreset(this)">Pop Polish</button>
+              <button class="preset-btn" onclick="selectPreset(this)">Vocoder</button>
+            </div>
+          </div>
+        </div>
+        <div class="booth-right">
+          <div class="record-zone">
+            <div class="record-btn-outer" id="recordBtn" onclick="toggleRecord()">
+              <div class="record-btn-inner">
+                <svg id="recordIcon" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23" stroke="white" stroke-width="2"/></svg>
+              </div>
+            </div>
+            <div class="record-label" id="recordLabel">Tap to Record</div>
+            <div class="record-timer" id="recordTimer">0:00</div>
+            <div class="record-status" id="recordStatus">Make sure your mic is allowed</div>
+            <div class="voice-level" style="width:80%;"><div class="voice-level-fill" id="voiceLevel"></div></div>
+          </div>
+          <div style="display:flex;gap:var(--space-3);">
+            <button class="btn btn-secondary" style="flex:1;" disabled id="playbackBtn">▶ Play Back</button>
+            <button class="btn btn-secondary" style="flex:1;" disabled id="saveBtn">💾 Save Take</button>
+          </div>
+          <button class="btn btn-primary" style="width:100%;" disabled id="exportBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Export & Share
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MASHUP PANEL -->
+    <div class="studio-panel" id="panel-mashup">
+      <div class="mashup-panel">
+        <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:var(--space-6);">Pick vocals from one track, beats from another. AI handles tempo matching automatically.</p>
+        <div class="mashup-tracks">
+          <div class="mashup-track-card">
+            <div class="mashup-track-label track-a-label">Track A — Vocals From</div>
+            <select class="track-select">
+              <option>Pick a Song or Upload...</option>
+              <option>Artist Vocal Example 1</option>
+              <option>Artist Vocal Example 2</option>
+              <option>Upload your own MP3...</option>
+            </select>
+            <div class="stem-toggle-row">
+              <button class="stem-chip active vocals" onclick="toggleStem(this,'vocals')">🎤 Vocals</button>
+              <button class="stem-chip bass" onclick="toggleStem(this,'bass')">🔉 Bass</button>
+              <button class="stem-chip other" onclick="toggleStem(this,'other')">🎸 Other</button>
+            </div>
+          </div>
+          <div class="mashup-plus">+</div>
+          <div class="mashup-track-card">
+            <div class="mashup-track-label track-b-label">Track B — Beat From</div>
+            <select class="track-select">
+              <option>Pick a Beat or Upload...</option>
+              <option>Classic Hip Hop Beat Vol.1</option>
+              <option>Trap Instrumental Pack</option>
+              <option>Upload your own MP3...</option>
+            </select>
+            <div class="stem-toggle-row">
+              <button class="stem-chip active beat" onclick="toggleStem(this,'beat')">🥁 Beat</button>
+              <button class="stem-chip active bass" onclick="toggleStem(this,'bass')">🔉 Bass</button>
+              <button class="stem-chip other" onclick="toggleStem(this,'other')">🎹 Melody</button>
+            </div>
+          </div>
+        </div>
+        <div class="mashup-controls">
+          <div class="mashup-key-match">
+            <div class="toggle-switch on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div>
+            Auto key-match
+          </div>
+          <div class="mashup-key-match">
+            <div class="toggle-switch on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div>
+            BPM sync
+          </div>
+          <div class="mashup-status">✓ Private use only</div>
+          <button class="btn btn-primary" style="margin-left:auto;" onclick="this.textContent='Processing…';setTimeout(()=>this.textContent='▶ Preview Mashup',2000)">▶ Preview Mashup</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DJ PANEL -->
+    <div class="studio-panel" id="panel-dj">
+      <div class="dj-panel">
+        <div class="dj-panel-header">
+          <h3 style="font-size:var(--text-lg);font-weight:700;">DJ Deck</h3>
+          <div class="dj-pro-badge">DJ Pro Mode</div>
+        </div>
+        <div class="dj-decks">
+          <!-- Deck A -->
+          <div class="deck deck-a">
+            <div class="deck-label">Deck A</div>
+            <div class="platter" id="platterA" onmousedown="startScratch('A')">
+              <div class="platter-ring" style="width:90%;height:90%;"></div>
+              <div class="platter-ring" style="width:70%;height:70%;"></div>
+              <div class="platter-ring" style="width:50%;height:50%;"></div>
+              <div class="platter-center">🎵</div>
+            </div>
+            <div class="deck-track-name">Dark Trap — Artist A</div>
+            <div class="deck-bpm-key">
+              <span class="bpm-badge">140 BPM</span>
+              <span class="key-badge">Am</span>
+            </div>
+            <div class="deck-controls">
+              <button class="deck-btn deck-btn-cue" title="Cue">◀</button>
+              <button class="deck-btn deck-btn-play" onclick="toggleDeckPlay('A',this)" title="Play/Pause">▶</button>
+              <button class="deck-btn deck-btn-cue" title="Loop">⟳</button>
+            </div>
+            <div class="pitch-slider-wrap">
+              <span>-8%</span>
+              <input type="range" class="pitch-slider" min="-8" max="8" value="0" step="0.1">
+              <span>+8%</span>
+            </div>
+          </div>
+
+          <!-- Mixer -->
+          <div class="mixer-panel">
+            <div class="mixer-eq">
+              <div class="eq-row"><span class="eq-label">HI</span><input type="range" class="eq-slider" min="0" max="100" value="60"><span class="eq-label">HI</span></div>
+              <div class="eq-row"><span class="eq-label">MID</span><input type="range" class="eq-slider" min="0" max="100" value="60"><span class="eq-label">MID</span></div>
+              <div class="eq-row"><span class="eq-label">LO</span><input type="range" class="eq-slider" min="0" max="100" value="60"><span class="eq-label">LO</span></div>
+            </div>
+            <div class="crossfader-section">
+              <div class="crossfader-label"><span>A</span><span>B</span></div>
+              <input type="range" class="crossfader" min="0" max="100" value="50">
+            </div>
+            <div class="effects-row">
+              <button class="fx-btn active" onclick="this.classList.toggle('active')">Echo</button>
+              <button class="fx-btn" onclick="this.classList.toggle('active')">Reverb</button>
+              <button class="fx-btn" onclick="this.classList.toggle('active')">Flanger</button>
+              <button class="fx-btn" onclick="this.classList.toggle('active')">Cut</button>
+            </div>
+          </div>
+
+          <!-- Deck B -->
+          <div class="deck deck-b">
+            <div class="deck-label">Deck B</div>
+            <div class="platter" id="platterB" onmousedown="startScratch('B')">
+              <div class="platter-ring" style="width:90%;height:90%;"></div>
+              <div class="platter-ring" style="width:70%;height:70%;"></div>
+              <div class="platter-ring" style="width:50%;height:50%;"></div>
+              <div class="platter-center">🎵</div>
+            </div>
+            <div class="deck-track-name">Lo-fi Chill — Artist B</div>
+            <div class="deck-bpm-key">
+              <span class="bpm-badge">85 BPM</span>
+              <span class="key-badge">Cmaj</span>
+            </div>
+            <div class="deck-controls">
+              <button class="deck-btn deck-btn-cue" title="Cue">◀</button>
+              <button class="deck-btn deck-btn-play" onclick="toggleDeckPlay('B',this)" title="Play/Pause">▶</button>
+              <button class="deck-btn deck-btn-cue" title="Loop">⟳</button>
+            </div>
+            <div class="pitch-slider-wrap">
+              <span>-8%</span>
+              <input type="range" class="pitch-slider" min="-8" max="8" value="0" step="0.1">
+              <span>+8%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features-section" id="features">
+  <div class="container">
+    <div class="container--narrow" style="padding-inline:0;">
+      <div class="section-label">Features</div>
+      <h2 class="section-title">Everything you need to create.</h2>
+    </div>
+    <div class="features-grid" style="margin-top:var(--space-10);">
+      <div class="feature-card">
+        <div class="feature-icon">🎤</div>
+        <h3 class="feature-title">Vocal Recording</h3>
+        <p class="feature-desc">Record directly from your phone, apply pitch correction, reverb, compression, and harmony in seconds.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎚️</div>
+        <h3 class="feature-title">AI Pitch Correction</h3>
+        <p class="feature-desc">From subtle natural correction to hard trap autotune — six preset styles and full manual control.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔀</div>
+        <h3 class="feature-title">Mashup Creator</h3>
+        <p class="feature-desc">Pull vocals from one song, beats from another. AI separates stems and auto-syncs BPM and key.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎧</div>
+        <h3 class="feature-title">DJ Mode</h3>
+        <p class="feature-desc">Dual decks, crossfader, cue points, loops, EQ kills, FX, and real scratch controls. Club-grade.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛒</div>
+        <h3 class="feature-title">Beat Marketplace</h3>
+        <p class="feature-desc">Browse and buy beats from producers worldwide — or upload and sell your own with tiered licensing.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📲</div>
+        <h3 class="feature-title">Instant Social Export</h3>
+        <p class="feature-desc">Generate 15-second Reels clips, waveform videos, and promo cards — shareable in one tap.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🤝</div>
+        <h3 class="feature-title">Collab in Real Time</h3>
+        <p class="feature-desc">Invite a friend, vocalist, or producer to your session. Build together from anywhere.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📁</div>
+        <h3 class="feature-title">Client Folders (DJ)</h3>
+        <p class="feature-desc">Create private event folders for clients — share preview mixes, collect feedback, and send final files.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3 class="feature-title">Rights-Smart Export</h3>
+        <p class="feature-desc">Original content exports freely. Uncleared mashups stay in private practice mode — no surprises.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing-section section" id="pricing">
+  <div class="container">
+    <div class="container--narrow" style="padding-inline:0;margin-bottom:var(--space-10);">
+      <div class="section-label">Pricing</div>
+      <h2 class="section-title">Start free. Level up when you're ready.</h2>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">$0<span>/mo</span></div>
+        <div class="plan-tagline">Make something real, no card needed.</div>
+        <ul class="plan-features" role="list">
+          <li class="plan-feature"><span class="check">✓</span> Vocal recording</li>
+          <li class="plan-feature"><span class="check">✓</span> 6 autotune presets</li>
+          <li class="plan-feature"><span class="check">✓</span> 50 free beats</li>
+          <li class="plan-feature"><span class="check">✓</span> Simple mashup (private)</li>
+          <li class="plan-feature"><span class="check">✓</span> Public creator profile</li>
+          <li class="plan-feature"><span class="x">✗</span> Stem separation</li>
+          <li class="plan-feature"><span class="x">✗</span> DJ Mode</li>
+        </ul>
+        <a href="#" class="btn btn-secondary" style="width:100%;justify-content:center;">Get Started</a>
+      </div>
+      <div class="pricing-card featured">
+        <div class="pricing-badge">Most Popular</div>
+        <div class="plan-name">Creator</div>
+        <div class="plan-price">$12<span>/mo</span></div>
+        <div class="plan-tagline">Everything to grow as an artist.</div>
+        <ul class="plan-features" role="list">
+          <li class="plan-feature"><span class="check">✓</span> Everything in Free</li>
+          <li class="plan-feature"><span class="check">✓</span> AI stem separation (20/mo)</li>
+          <li class="plan-feature"><span class="check">✓</span> Multi-track projects</li>
+          <li class="plan-feature"><span class="check">✓</span> 500+ beat library</li>
+          <li class="plan-feature"><span class="check">✓</span> Beat store + selling</li>
+          <li class="plan-feature"><span class="check">✓</span> Collaboration sessions</li>
+          <li class="plan-feature"><span class="x">✗</span> DJ Mode</li>
+        </ul>
+        <a href="#" class="btn btn-primary" style="width:100%;justify-content:center;">Start Creator</a>
+      </div>
+      <div class="pricing-card">
+        <div class="plan-name">DJ Pro</div>
+        <div class="plan-price">$29<span>/mo</span></div>
+        <div class="plan-tagline">Professional performance tools + business.</div>
+        <ul class="plan-features" role="list">
+          <li class="plan-feature"><span class="check">✓</span> Everything in Creator</li>
+          <li class="plan-feature"><span class="check">✓</span> Full DJ Mode</li>
+          <li class="plan-feature"><span class="check">✓</span> Unlimited stems</li>
+          <li class="plan-feature"><span class="check">✓</span> Client event folders</li>
+          <li class="plan-feature"><span class="check">✓</span> Booking profile</li>
+          <li class="plan-feature"><span class="check">✓</span> Promo pack export</li>
+          <li class="plan-feature"><span class="check">✓</span> Priority rendering</li>
+        </ul>
+        <a href="#" class="btn btn-secondary" style="width:100%;justify-content:center;">Start DJ Pro</a>
+      </div>
+      <div class="pricing-card">
+        <div class="plan-name">Label / Agency</div>
+        <div class="plan-price">$79<span>/mo</span></div>
+        <div class="plan-tagline">For teams, labels, and collectives.</div>
+        <ul class="plan-features" role="list">
+          <li class="plan-feature"><span class="check">✓</span> Everything in DJ Pro</li>
+          <li class="plan-feature"><span class="check">✓</span> Multi-seat accounts</li>
+          <li class="plan-feature"><span class="check">✓</span> API access to stems</li>
+          <li class="plan-feature"><span class="check">✓</span> White-label pages</li>
+          <li class="plan-feature"><span class="check">✓</span> Custom contracts</li>
+          <li class="plan-feature"><span class="check">✓</span> Team analytics</li>
+          <li class="plan-feature"><span class="check">✓</span> Dedicated support</li>
+        </ul>
+        <a href="#" class="btn btn-secondary" style="width:100%;justify-content:center;">Contact Us</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMMUNITY -->
+<section class="community-section section" id="community">
+  <div class="container">
+    <div class="container--narrow" style="padding-inline:0;margin-bottom:var(--space-10);">
+      <div class="section-label">Community</div>
+      <h2 class="section-title">Hear what people are making.</h2>
+      <p class="section-desc">Real tracks from real creators — remixes, vocal takes, mashups, and beats.</p>
+    </div>
+    <div class="community-grid">
+      <div class="community-card">
+        <div class="community-card-top">
+          <div class="avatar" style="background:var(--color-pink-dim);">🎤</div>
+          <div>
+            <div class="user-name">@jordanvibes</div>
+            <div class="user-tag">Creator • Atlanta, GA</div>
+          </div>
+        </div>
+        <div class="track-preview">
+          <div class="mini-waveform">
+            <div class="mini-waveform-bars">
+              <span style="height:60%"></span><span style="height:100%"></span><span style="height:40%"></span><span style="height:80%"></span><span style="height:55%"></span><span style="height:90%"></span><span style="height:35%"></span><span style="height:70%"></span><span style="height:50%"></span><span style="height:85%"></span>
+            </div>
+          </div>
+          <button class="play-mini">▶</button>
+        </div>
+        <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-1);">Late Night Feelings</div>
+        <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);">R&B Vocal + Guitar R&B Beat • Trap Tune preset</div>
+        <div class="community-meta">
+          <div class="meta-item">❤️ 1.2k</div>
+          <div class="meta-item">🔁 348</div>
+          <div class="meta-item">💬 87</div>
+        </div>
+        <div class="tag-chips"><span class="tag-chip">#rnb</span><span class="tag-chip">#vocal</span><span class="tag-chip">#mixforge</span></div>
+      </div>
+      <div class="community-card">
+        <div class="community-card-top">
+          <div class="avatar" style="background:var(--color-cyan-dim);">🎧</div>
+          <div>
+            <div class="user-name">@djkronic92</div>
+            <div class="user-tag">DJ Pro • Miami, FL</div>
+          </div>
+        </div>
+        <div class="track-preview">
+          <div class="mini-waveform">
+            <div class="mini-waveform-bars">
+              <span style="height:80%"></span><span style="height:45%"></span><span style="height:100%"></span><span style="height:60%"></span><span style="height:75%"></span><span style="height:30%"></span><span style="height:95%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:40%"></span>
+            </div>
+          </div>
+          <button class="play-mini">▶</button>
+        </div>
+        <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-1);">Club Rotation Mix Vol.3</div>
+        <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);">DJ Mix • 47 minutes • Built in DJ Mode</div>
+        <div class="community-meta">
+          <div class="meta-item">❤️ 3.7k</div>
+          <div class="meta-item">🔁 892</div>
+          <div class="meta-item">💬 215</div>
+        </div>
+        <div class="tag-chips"><span class="tag-chip">#djmix</span><span class="tag-chip">#club</span><span class="tag-chip">#djmode</span></div>
+      </div>
+      <div class="community-card">
+        <div class="community-card-top">
+          <div class="avatar" style="background:var(--color-green-dim);">🎹</div>
+          <div>
+            <div class="user-name">@makenoise_</div>
+            <div class="user-tag">Producer • Chicago, IL</div>
+          </div>
+        </div>
+        <div class="track-preview">
+          <div class="mini-waveform">
+            <div class="mini-waveform-bars">
+              <span style="height:50%"></span><span style="height:85%"></span><span style="height:30%"></span><span style="height:100%"></span><span style="height:45%"></span><span style="height:70%"></span><span style="height:55%"></span><span style="height:90%"></span><span style="height:35%"></span><span style="height:60%"></span>
+            </div>
+          </div>
+          <button class="play-mini">▶</button>
+        </div>
+        <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-1);">Midnight Trap Beat</div>
+        <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);">Beat Pack Preview • $9.99 on MixForge</div>
+        <div class="community-meta">
+          <div class="meta-item">❤️ 897</div>
+          <div class="meta-item">🛒 134 sold</div>
+          <div class="meta-item">💬 43</div>
+        </div>
+        <div class="tag-chips"><span class="tag-chip">#beats</span><span class="tag-chip">#trap</span><span class="tag-chip">#forsale</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section section">
+  <div class="cta-glow"></div>
+  <div class="container--narrow" style="position:relative;z-index:1;">
+    <h2 class="cta-title">Your sound starts now.</h2>
+    <p class="cta-desc">Free to start. No equipment. No experience required. Just you, a beat, and whatever you want to say.</p>
+    <div class="cta-actions">
+      <a href="#studio" class="btn btn-primary btn-xl">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        Start Creating Free
+      </a>
+      <a href="#pricing" class="btn btn-secondary btn-xl">View Plans</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="footer-logo">
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="8" fill="#7c5cfc"/><path d="M7 20 L11 8 L15 16 L17 12 L21 20" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="21" cy="10" r="2.5" fill="#00d4ff"/></svg>
+          <span><span class="logo-text-mix">Mix</span><span class="logo-text-forge">Forge</span></span>
+        </div>
+        <p class="footer-desc">Make music your way. For everyday creators, artists, and DJs — all in one place.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <div class="footer-links">
+          <a href="#">Everyday Mode</a>
+          <a href="#">Creator Mode</a>
+          <a href="#">DJ Mode</a>
+          <a href="#">Beat Marketplace</a>
+          <a href="#">Pricing</a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Community</h5>
+        <div class="footer-links">
+          <a href="#">Explore Mixes</a>
+          <a href="#">Beat Store</a>
+          <a href="#">Creator Profiles</a>
+          <a href="#">Blog</a>
+          <a href="#">Discord</a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h5>Company</h5>
+        <div class="footer-links">
+          <a href="#">About</a>
+          <a href="#">Careers</a>
+          <a href="#">Press</a>
+          <a href="#">Contact</a>
+          <a href="#">API Docs</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copy">© 2026 MixForge. All rights reserved.</div>
+      <div class="footer-legal">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Rights & Licensing</a>
+        <a href="#">Cookies</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// THEME TOGGLE
+(function(){
+  const toggle = document.querySelector('[data-theme-toggle]');
+  const html = document.documentElement;
+  let theme = 'dark';
+  html.setAttribute('data-theme', theme);
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', theme);
+      toggle.innerHTML = theme === 'dark'
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+    });
+  }
+})();
+
+// MOBILE NAV
+document.getElementById('hamburger').addEventListener('click', () => document.getElementById('mobileNav').classList.add('open'));
+document.getElementById('closeNav').addEventListener('click', closeMobileNav);
+function closeMobileNav() { document.getElementById('mobileNav').classList.remove('open'); }
+
+// HERO PLAYER
+let isPlaying = false;
+let progressInterval = null;
+let progressVal = 38;
+function togglePlay() {
+  isPlaying = !isPlaying;
+  const icon = document.getElementById('heroPlayIcon');
+  if (isPlaying) {
+    icon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+    progressInterval = setInterval(() => {
+      progressVal = (progressVal + 0.2) % 100;
+      document.getElementById('progressFill').style.width = progressVal + '%';
+    }, 100);
+  } else {
+    icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+    clearInterval(progressInterval);
+  }
+}
+function seekProgress(e, bar) {
+  const rect = bar.getBoundingClientRect();
+  progressVal = ((e.clientX - rect.left) / rect.width) * 100;
+  document.getElementById('progressFill').style.width = progressVal + '%';
+}
+function setModeActive(btn) {
+  btn.closest('.player-mode-pills').querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+}
+function toggleAutotune(btn) {
+  btn.closest('.autotune-row').querySelectorAll('.autotune-chip').forEach(c => c.classList.remove('active','on'));
+  btn.classList.add('active','on');
+}
+
+// STUDIO TABS
+function switchTab(tab, btn) {
+  document.querySelectorAll('.studio-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.studio-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+
+// MODES
+function selectMode(card) {
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+}
+
+// RECORD SIMULATION
+let recording = false;
+let recSeconds = 0;
+let recInterval = null;
+let levelInterval = null;
+function toggleRecord() {
+  recording = !recording;
+  const btn = document.getElementById('recordBtn');
+  const label = document.getElementById('recordLabel');
+  const status = document.getElementById('recordStatus');
+  const timer = document.getElementById('recordTimer');
+  const level = document.getElementById('voiceLevel');
+  if (recording) {
+    btn.classList.add('recording');
+    label.textContent = 'Recording...';
+    status.textContent = '🔴 Live recording';
+    recSeconds = 0;
+    recInterval = setInterval(() => {
+      recSeconds++;
+      const m = Math.floor(recSeconds / 60);
+      const s = recSeconds % 60;
+      timer.textContent = m + ':' + String(s).padStart(2,'0');
+    }, 1000);
+    levelInterval = setInterval(() => {
+      const w = 20 + Math.random() * 75;
+      level.style.width = w + '%';
+    }, 80);
+  } else {
+    btn.classList.remove('recording');
+    label.textContent = 'Tap to Record Again';
+    status.textContent = '✓ Take saved';
+    clearInterval(recInterval);
+    clearInterval(levelInterval);
+    level.style.width = '0%';
+    if (recSeconds > 1) {
+      document.getElementById('playbackBtn').disabled = false;
+      document.getElementById('saveBtn').disabled = false;
+      document.getElementById('exportBtn').disabled = false;
+    }
+  }
+}
+
+// BEAT SELECT
+function selectBeat(item) {
+  item.closest('.beat-list').querySelectorAll('.beat-item').forEach(i => i.classList.remove('active'));
+  item.classList.add('active');
+}
+
+// AUTOTUNE PRESET
+function selectPreset(btn) {
+  btn.closest('.autotune-presets').querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// STEM TOGGLE
+function toggleStem(chip, type) {
+  chip.classList.toggle('active');
+  if (chip.classList.contains('active')) chip.classList.add(type);
+  else chip.classList.remove(type);
+}
+
+// TOGGLE SWITCH
+function toggleSwitch(sw) {
+  sw.classList.toggle('on');
+}
+
+// DJ DECK
+function toggleDeckPlay(deck, btn) {
+  const playing = btn.textContent === '⏸';
+  btn.textContent = playing ? '▶' : '⏸';
+  const platter = document.getElementById('platter' + deck);
+  if (!playing) {
+    platter.style.animation = 'spin 2s linear infinite';
+  } else {
+    platter.style.animation = 'none';
+  }
+}
+// Platter spin CSS
+const spinStyle = document.createElement('style');
+spinStyle.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+document.head.appendChild(spinStyle);
+
+function startScratch(deck) {
+  const platter = document.getElementById('platter' + deck);
+  platter.style.animation = 'none';
+  let lastX = null;
+  function onMove(e) {
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    if (lastX !== null) {
+      const diff = cx - lastX;
+      const current = platter.style.transform;
+      const match = current.match(/rotate\((-?[\d.]+)deg\)/);
+      const deg = match ? parseFloat(match[1]) : 0;
+      platter.style.transform = `rotate(${deg + diff * 1.5}deg)`;
+    }
+    lastX = cx;
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchmove', onMove);
+  document.addEventListener('touchend', onUp);
+}
+</script>
+<script src="/mixforge-backend.js"></script>
+</body>
+</html>
