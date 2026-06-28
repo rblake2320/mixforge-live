@@ -27,6 +27,9 @@ Optional while still using local file storage:
 MIXFORGE_DATA_ROOT=/data
 MIXFORGE_DATA_FILE=/data/mixforge-db.json
 MIXFORGE_UPLOAD_ROOT=/data/uploads
+MIXFORGE_LOG_ROOT=/data/logs
+MIXFORGE_LOG_RETENTION_DAYS=90
+MIXFORGE_SLOW_REQUEST_MS=1000
 ```
 
 Do not use local file storage for real production uploads unless your host provides a persistent disk/volume. Move recordings to object storage before real users.
@@ -39,7 +42,7 @@ For the quick launch path, use a Railway Volume mounted at:
 /data
 ```
 
-The app now defaults to `/data/mixforge-db.json` and `/data/uploads` when `NODE_ENV=production`, so a Railway Volume mounted at `/data` makes the JSON database and uploaded audio survive restarts and redeploys.
+The app now defaults to `/data/mixforge-db.json`, `/data/uploads`, and `/data/logs` when `NODE_ENV=production`, so a Railway Volume mounted at `/data` makes the JSON database, uploaded audio, and append-only JSONL log databases survive restarts and redeploys.
 
 If you mount somewhere else, set:
 
@@ -52,15 +55,18 @@ or set the file paths explicitly:
 ```text
 MIXFORGE_DATA_FILE=/your/mount/path/mixforge-db.json
 MIXFORGE_UPLOAD_ROOT=/your/mount/path/uploads
+MIXFORGE_LOG_ROOT=/your/mount/path/logs
 ```
 
-After deployment, confirm `/api/health` returns the expected `dataRoot`.
+After deployment, confirm `/api/health` returns the expected `dataRoot` and `logRoot`.
 
 ## Hardening Built In
 
 - Production refuses to start with the development JWT secret.
 - `/api/readiness` returns `503` until demo mode is off and JWT, HTTPS base URL, writable storage, Stripe, and StemSplit are configured.
 - `/api/diagnostics` reports whether checkout/stem separation are real, demo, or unavailable without exposing secrets.
+- `/api/logs/taxonomy` exposes the supported log taxonomy. Raw log records stay on disk under `MIXFORGE_LOG_ROOT`.
+- Structured JSONL log databases cover audit, error, security/threat, access/authorization, trace/span, authentication, infrastructure, performance, transaction, change/deployment, dependency, rate limit, gateway, session, data access/query, health, agent decision, tool call, token/cost, quality, and debug/developer categories.
 - API write/auth endpoints are rate limited.
 - User-owned recordings and stem jobs are private to the owner.
 - Paid checkout cannot silently upgrade users without Stripe. In demo mode it returns a labeled no-payment response and leaves the user on their current plan.
@@ -82,8 +88,9 @@ After deployment, confirm `/api/health` returns the expected `dataRoot`.
 2. Create a Railway service from the repo.
 3. Railway will read `railway.json`; confirm start command is `npm start`.
 4. Set all required environment variables.
-5. Add a Railway Volume or switch `MIXFORGE_DATA_FILE`/`MIXFORGE_UPLOAD_ROOT` to cloud storage-backed paths before real users.
+5. Add a Railway Volume or switch `MIXFORGE_DATA_FILE`/`MIXFORGE_UPLOAD_ROOT`/`MIXFORGE_LOG_ROOT` to cloud storage-backed paths before real users.
 6. Confirm `/api/health` is green before testing checkout or recording.
+7. Confirm `/api/diagnostics` reports `logging.ok: true`.
 
 ## Stripe
 

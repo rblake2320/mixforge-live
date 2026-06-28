@@ -18,6 +18,7 @@ Use the result as context, but treat the current repository files as the source 
 - Express app entrypoint: `src/server.js`
 - App/API implementation: `src/app.js`
 - Runtime config: `src/config.js`
+- Structured logging: `src/logging.js`
 - Readiness/diagnostics: `src/readiness.js`
 - Static frontend: `public/index.html` and `public/mixforge-backend.js`
 - Tests: `test/api.test.js`
@@ -37,6 +38,21 @@ Allowed demo behavior must be explicit and labeled:
 
 Use `/api/readiness` and `/api/diagnostics` to expose what is real, demo, unavailable, or misconfigured.
 
+## Logging Contract
+
+Do not remove or bypass structured logging.
+
+- All log records are JSONL under `MIXFORGE_LOG_ROOT` and are also mirrored into `all.jsonl`.
+- `src/logging.js` defines the authoritative log taxonomy.
+- Every state mutation must emit an `audit` and/or `transaction_business` event.
+- Authentication success/failure must emit `authentication` and `session` events.
+- Authorization failures must emit `access_authorization`; suspicious validation failures must emit `security_threat`.
+- Runtime exceptions and provider failures must emit `error`.
+- Provider calls must emit `dependency_external` and trace-span records.
+- Sensitive reads must emit `audit` and `data_access_query`.
+- Request correlation IDs must be preserved through `x-correlation-id`.
+- Do not log passwords, tokens, secrets, webhook signatures, or full Authorization headers.
+
 ## Secrets And Data
 
 Never commit secrets or runtime data.
@@ -45,6 +61,7 @@ Ignored/local-only:
 
 - `.env`
 - `data/`
+- local JSONL logs under `data/logs/`
 - `node_modules/`
 - `server.*.log`
 

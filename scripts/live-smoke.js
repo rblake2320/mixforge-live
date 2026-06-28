@@ -89,6 +89,22 @@ results.push({
   capabilities: readiness.body.capabilities
 });
 
+const diagnostics = await readJson("/api/diagnostics");
+results.push({
+  check: "diagnostics",
+  ok: diagnostics.response.ok,
+  loggingOk: diagnostics.body.logging?.ok,
+  logTypes: diagnostics.body.logging?.logTypes
+});
+
+const taxonomy = await readJson("/api/logs/taxonomy");
+assertOk("log taxonomy", taxonomy.response, taxonomy.body);
+results.push({
+  check: "log_taxonomy",
+  ok: true,
+  count: Object.keys(taxonomy.body.logTypes || {}).length
+});
+
 console.log(JSON.stringify({ baseUrl, results }, null, 2));
 
 if (!readiness.response.ok) {

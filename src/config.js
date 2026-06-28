@@ -17,6 +17,8 @@ const demoMode =
 
 export const config = {
   rootDir,
+  serviceName: "mixforge-backend",
+  serviceVersion: "0.1.0",
   isProduction,
   publicDir: path.join(rootDir, "public"),
   host,
@@ -26,6 +28,9 @@ export const config = {
   dataRoot: process.env.MIXFORGE_DATA_ROOT || defaultDataRoot,
   dataFile: process.env.MIXFORGE_DATA_FILE || path.join(process.env.MIXFORGE_DATA_ROOT || defaultDataRoot, "mixforge-db.json"),
   uploadRoot: process.env.MIXFORGE_UPLOAD_ROOT || path.join(process.env.MIXFORGE_DATA_ROOT || defaultDataRoot, "uploads"),
+  logRoot: process.env.MIXFORGE_LOG_ROOT || path.join(process.env.MIXFORGE_DATA_ROOT || defaultDataRoot, "logs"),
+  logRetentionDays: Number(process.env.MIXFORGE_LOG_RETENTION_DAYS || 90),
+  slowRequestMs: Number(process.env.MIXFORGE_SLOW_REQUEST_MS || 1000),
   jwtSecret: process.env.JWT_SECRET || defaultJwtSecret,
   defaultJwtSecret,
   allowedOrigins: (process.env.ALLOWED_ORIGINS || "")

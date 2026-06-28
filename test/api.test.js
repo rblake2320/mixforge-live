@@ -5,11 +5,13 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import Stripe from "stripe";
 import { createApp } from "../src/app.js";
+import { LOG_TYPES } from "../src/logging.js";
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mixforge-test-"));
 const app = createApp({
   dataFile: path.join(tmpRoot, "db.json"),
   uploadRoot: path.join(tmpRoot, "uploads"),
+  logRoot: path.join(tmpRoot, "logs"),
   publicDir: path.join(process.cwd(), "public"),
   jwtSecret: "test-secret",
   stripeSecretKey: "sk_test_mixforge",
@@ -21,6 +23,7 @@ async function withTempApp(overrides, fn) {
   const isolatedApp = createApp({
     dataFile: path.join(root, "db.json"),
     uploadRoot: path.join(root, "uploads"),
+    logRoot: path.join(root, "logs"),
     publicDir: path.join(process.cwd(), "public"),
     jwtSecret: "isolated-test-secret",
     ...overrides
@@ -50,6 +53,11 @@ let token;
 let recordingId;
 let userId;
 let secondToken;
+
+function readJsonl(filePath) {
+  const raw = fs.readFileSync(filePath, "utf8").trim();
+  return raw ? raw.split("\n").map((line) => JSON.parse(line)) : [];
+}
 
 before(async () => {
   await new Promise((resolve) => {
@@ -335,5 +343,50 @@ describe("MixForge API", () => {
     assert.ok(payload.checks.some((check) => check.id === "demo_mode"));
     assert.ok(payload.checks.some((check) => check.id === "stripe"));
     assert.ok(payload.checks.some((check) => check.id === "stemsplit"));
+  });
+
+  it("creates structured log databases and records required events", async () => {
+    const failedLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "artist@example.com", password: "wrong-password" })
+    });
+    assert.equal(failedLogin.status, 401);
+
+    const logRoot = path.join(tmpRoot, "logs");
+    const manifest = JSON.parse(fs.readFileSync(path.join(logRoot, "manifest.json"), "utf8"));
+    assert.equal(manifest.format, "jsonl");
+    assert.equal(Object.keys(manifest.logTypes).length, Object.keys(LOG_TYPES).length);
+
+    for (const metadata of Object.values(LOG_TYPES)) {
+      assert.equal(fs.existsSync(path.join(logRoot, metadata.file)), true, `${metadata.file} should exist`);
+    }
+    assert.equal(fs.existsSync(path.join(logRoot, "all.jsonl")), true);
+
+    const audit = readJsonl(path.join(logRoot, LOG_TYPES.audit.file));
+    const authentication = readJsonl(path.join(logRoot, LOG_TYPES.authentication.file));
+    const security = readJsonl(path.join(logRoot, LOG_TYPES.security_threat.file));
+    const access = readJsonl(path.join(logRoot, LOG_TYPES.access_authorization.file));
+    const trace = readJsonl(path.join(logRoot, LOG_TYPES.trace_span.file));
+    const business = readJsonl(path.join(logRoot, LOG_TYPES.transaction_business.file));
+
+    assert.ok(audit.some((entry) => entry.eventType === "user_account_created"));
+    assert.ok(audit.some((entry) => entry.eventType === "recording_uploaded"));
+    assert.ok(authentication.some((entry) => entry.eventType === "signup_success"));
+    assert.ok(security.some((entry) => entry.eventType === "auth_failure_password"));
+    assert.ok(access.some((entry) => entry.eventType === "recording_audio_access_denied"));
+    assert.ok(trace.some((entry) => entry.eventType === "http_request_completed"));
+    assert.ok(business.some((entry) => entry.eventType === "checkout_demo_mode_response"));
+
+    for (const entry of audit.slice(0, 3)) {
+      assert.ok(entry.timestamp);
+      assert.ok(entry.traceId);
+      assert.equal(entry.service, "mixforge-backend");
+      assert.ok(entry.version);
+      assert.ok(entry.actor);
+      assert.ok(entry.where);
+      assert.ok(entry.what);
+      assert.ok(entry.outcome);
+    }
   });
 });

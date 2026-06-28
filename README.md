@@ -13,6 +13,7 @@ This turns the static `mixforge.html` prototype into a runnable local full-stack
 - Project creation/listing API.
 - Stem job API with explicit demo previews in development and real StemSplit support when `STEMSPLIT_API_KEY` is set.
 - Stripe-ready checkout endpoint. Paid checkout uses Stripe when configured; otherwise demo mode returns a labeled no-payment result and does not activate paid plans.
+- Structured JSONL log databases under `data/logs` for audit, security, access, trace, auth, error, performance, business, provider, session, health, and AI-agent observability events.
 
 ## Run
 
@@ -41,6 +42,7 @@ npm run doctor
 - `GET /api/health`
 - `GET /api/readiness`
 - `GET /api/diagnostics`
+- `GET /api/logs/taxonomy`
 - `POST /api/auth/signup`
 - `POST /api/auth/login`
 - `GET /api/me`
@@ -61,6 +63,7 @@ npm run doctor
 
 - Replace local JSON persistence with Supabase/Postgres or managed Postgres.
 - Replace local upload storage with Supabase Storage, S3, R2, or equivalent private object storage.
+- Forward JSONL logs from `MIXFORGE_LOG_ROOT` into a SIEM/log platform and retain audit/security logs for the required compliance window.
 - Configure StemSplit for real stem separation.
 - Configure live Stripe products, price IDs, webhook signing, and customer portal.
 - Add moderation, licensing checks, rate limits, and abuse monitoring before public launch.

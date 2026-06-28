@@ -35,6 +35,25 @@ function checkStorageWritable(cfg) {
   return result;
 }
 
+function checkLogStorageWritable(cfg) {
+  const result = {
+    ok: false,
+    detail: cfg.logRoot
+  };
+
+  try {
+    fs.mkdirSync(cfg.logRoot, { recursive: true });
+    const probe = path.join(cfg.logRoot, `.mixforge-log-write-test-${Date.now()}`);
+    fs.writeFileSync(probe, "ok");
+    fs.rmSync(probe, { force: true });
+    result.ok = true;
+  } catch (error) {
+    result.detail = error.message;
+  }
+
+  return result;
+}
+
 function allStripeValuesConfigured(cfg) {
   return Boolean(
     cfg.stripeSecretKey &&
@@ -72,6 +91,12 @@ export function evaluateReadiness(cfg) {
       label: "Data and upload storage are writable",
       required: true,
       ...checkStorageWritable(cfg)
+    },
+    {
+      id: "log_storage_writable",
+      label: "Structured log storage is writable",
+      required: true,
+      ...checkLogStorageWritable(cfg)
     },
     {
       id: "demo_mode",
@@ -114,6 +139,7 @@ export function evaluateReadiness(cfg) {
     demoMode: cfg.demoMode,
     publicBaseUrl: cfg.publicBaseUrl,
     dataRoot: cfg.dataRoot,
+    logRoot: cfg.logRoot,
     capabilities: {
       auth: "real",
       recording: "real",

@@ -12,6 +12,13 @@ import { StemSplit, webhooks as stemsplitWebhooks } from "@stemsplit/sdk";
 import { attachUser, signToken, toPublicUser } from "./auth.js";
 import { config as defaultConfig } from "./config.js";
 import { JsonStore, now } from "./db.js";
+import {
+  JsonlLogStore,
+  LOG_TYPES,
+  hashIdentifier,
+  requestLoggerMiddleware,
+  timedDependency
+} from "./logging.js";
 import { evaluateReadiness } from "./readiness.js";
 
 const PLAN_CATALOG = {
@@ -130,7 +137,7 @@ function canAccessOwnedRecord(record, user) {
   return !record?.userId || record.userId === user?.id;
 }
 
-function audioFileFilter(_req, file, cb) {
+function audioFileFilter(req, file, cb) {
   const allowedMime = file.mimetype?.startsWith("audio/") || file.mimetype === "video/webm";
   const allowedExt = [".aac", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".webm"].includes(
     path.extname(file.originalname || "").toLowerCase()
@@ -139,6 +146,15 @@ function audioFileFilter(_req, file, cb) {
     cb(null, true);
     return;
   }
+  req.log?.("security_threat", {
+    eventType: "input_validation_failed_audio_upload_type",
+    severity: "WARN",
+    outcome: "failure",
+    what: {
+      originalName: file.originalname,
+      mimetype: file.mimetype
+    }
+  });
   cb(new Error("Only audio uploads are supported."));
 }
 
@@ -227,7 +243,7 @@ function publicStemOutputs(outputs) {
   }));
 }
 
-async function refreshStemSplitJob(store, cfg, job) {
+async function refreshStemSplitJob(store, cfg, job, req = null) {
   if (!job || job.provider !== "stemsplit" || !job.providerJobId) {
     return job;
   }
@@ -243,7 +259,9 @@ async function refreshStemSplitJob(store, cfg, job) {
     });
   }
 
-  const remote = await client.jobs.get(job.providerJobId);
+  const remote = req
+    ? await timedDependency(req, "stemsplit", "jobs.get", () => client.jobs.get(job.providerJobId))
+    : await client.jobs.get(job.providerJobId);
   const status = mapStemSplitStatus(remote.status);
   return store.update("stemJobs", job.id, {
     status,
@@ -257,16 +275,51 @@ async function refreshStemSplitJob(store, cfg, job) {
 export function createApp(overrides = {}) {
   const cfg = { ...defaultConfig, ...overrides };
   fs.mkdirSync(cfg.uploadRoot, { recursive: true });
+  fs.mkdirSync(cfg.logRoot, { recursive: true });
   const recordingUploadDir = path.join(cfg.uploadRoot, "recordings");
   const stemUploadDir = path.join(cfg.uploadRoot, "stems");
   fs.mkdirSync(recordingUploadDir, { recursive: true });
   fs.mkdirSync(stemUploadDir, { recursive: true });
 
   const store = overrides.store || new JsonStore(cfg.dataFile);
+  const logStore =
+    overrides.logStore ||
+    new JsonlLogStore({
+      rootDir: cfg.logRoot,
+      serviceName: cfg.serviceName,
+      serviceVersion: cfg.serviceVersion,
+      retentionDays: cfg.logRetentionDays
+    });
   const app = express();
   app.locals.store = store;
   app.locals.config = cfg;
+  app.locals.logStore = logStore;
   app.set("trust proxy", cfg.isProduction ? 1 : false);
+  app.use(requestLoggerMiddleware(logStore, cfg));
+
+  logStore.log("system_infrastructure", {
+    eventType: "app_initialized",
+    severity: "INFO",
+    outcome: "success",
+    what: {
+      environment: cfg.isProduction ? "production" : "development",
+      dataRoot: cfg.dataRoot,
+      uploadRoot: cfg.uploadRoot,
+      logRoot: cfg.logRoot
+    }
+  });
+  logStore.log("change_deployment", {
+    eventType: "runtime_configuration_loaded",
+    severity: "INFO",
+    outcome: "success",
+    what: {
+      demoMode: cfg.demoMode,
+      publicBaseUrl: cfg.publicBaseUrl,
+      stripeConfigured: Boolean(cfg.stripeSecretKey),
+      stemsplitConfigured: Boolean(cfg.stemsplitApiKey),
+      logRetentionDays: cfg.logRetentionDays
+    }
+  });
 
   app.use(
     helmet({
@@ -292,6 +345,12 @@ export function createApp(overrides = {}) {
     express.raw({ type: "application/json" }),
     (req, res) => {
       if (!cfg.stripeSecretKey || !cfg.stripeWebhookSecret) {
+        req.log?.("security_threat", {
+          eventType: "stripe_webhook_unconfigured",
+          severity: "WARN",
+          outcome: "failure",
+          what: { provider: "stripe" }
+        });
         return res.status(501).json({ error: "Stripe webhook is not configured." });
       }
 
@@ -300,6 +359,13 @@ export function createApp(overrides = {}) {
       try {
         event = stripe.webhooks.constructEvent(req.body, req.get("stripe-signature"), cfg.stripeWebhookSecret);
       } catch (error) {
+        req.log?.("security_threat", {
+          eventType: "stripe_webhook_signature_invalid",
+          severity: "WARN",
+          outcome: "denied",
+          what: { provider: "stripe" },
+          error
+        });
         return res.status(400).json({ error: error.message });
       }
 
@@ -312,6 +378,28 @@ export function createApp(overrides = {}) {
         createdAt: now()
       });
       const updatedUser = applyStripeEvent(store, cfg, event);
+      req.log?.("dependency_external", {
+        eventType: "stripe_webhook_received",
+        severity: "INFO",
+        outcome: "success",
+        what: {
+          provider: "stripe",
+          eventType: event.type,
+          payloadId: event.id,
+          objectId: event.data?.object?.id || null
+        }
+      });
+      req.log?.("audit", {
+        eventType: "stripe_webhook_applied",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: updatedUser?.id || null, userEmailHash: hashIdentifier(updatedUser?.email), authenticated: false },
+        what: {
+          provider: "stripe",
+          eventType: event.type,
+          updatedUserId: updatedUser?.id || null
+        }
+      });
       return res.json({ received: true, updatedUserId: updatedUser?.id || null });
     }
   );
@@ -321,6 +409,12 @@ export function createApp(overrides = {}) {
     express.raw({ type: "*/*" }),
     (req, res) => {
       if (!cfg.stemsplitWebhookSecret) {
+        req.log?.("security_threat", {
+          eventType: "stemsplit_webhook_unconfigured",
+          severity: "WARN",
+          outcome: "failure",
+          what: { provider: "stemsplit" }
+        });
         return res.status(501).json({ error: "STEMSPLIT_WEBHOOK_SECRET is not configured." });
       }
 
@@ -332,11 +426,23 @@ export function createApp(overrides = {}) {
         );
         const providerJobId = event.jobId || event.data?.id;
         if (!providerJobId) {
+          req.log?.("dependency_external", {
+            eventType: "stemsplit_webhook_ignored_missing_job",
+            severity: "WARN",
+            outcome: "deferred",
+            what: { provider: "stemsplit", eventName: event.event || null }
+          });
           return res.json({ received: true, ignored: true });
         }
 
         const localJob = store.find("stemJobs", (candidate) => candidate.providerJobId === providerJobId);
         if (!localJob) {
+          req.log?.("dependency_external", {
+            eventType: "stemsplit_webhook_unmatched_job",
+            severity: "WARN",
+            outcome: "deferred",
+            what: { provider: "stemsplit", providerJobId }
+          });
           return res.json({ received: true, matched: false });
         }
 
@@ -348,15 +454,42 @@ export function createApp(overrides = {}) {
             completedAt: now(),
             stems: publicStemOutputs(event.data?.outputs)
           });
+          req.log?.("transaction_business", {
+            eventType: "stemsplit_job_completed_webhook",
+            severity: "INFO",
+            outcome: "success",
+            actor: { userId: localJob.userId || null, userEmailHash: null, authenticated: false },
+            what: { jobId: localJob.id, providerJobId }
+          });
         } else if (eventName === "job.failed" || eventName === "job.expired") {
           store.update("stemJobs", localJob.id, {
             status: "failed",
             errorMessage: event.data?.errorMessage || eventName
           });
+          req.log?.("error", {
+            eventType: "stemsplit_job_failed_webhook",
+            severity: "ERROR",
+            outcome: "failure",
+            actor: { userId: localJob.userId || null, userEmailHash: null, authenticated: false },
+            what: { jobId: localJob.id, providerJobId, eventName }
+          });
         }
 
+        req.log?.("dependency_external", {
+          eventType: "stemsplit_webhook_received",
+          severity: "INFO",
+          outcome: "success",
+          what: { provider: "stemsplit", eventName, providerJobId, matched: true }
+        });
         return res.json({ received: true, matched: true });
-      } catch {
+      } catch (error) {
+        req.log?.("security_threat", {
+          eventType: "stemsplit_webhook_signature_invalid",
+          severity: "WARN",
+          outcome: "denied",
+          what: { provider: "stemsplit" },
+          error
+        });
         return res.status(401).json({ error: "Invalid StemSplit webhook signature." });
       }
     }
@@ -370,7 +503,22 @@ export function createApp(overrides = {}) {
       windowMs: 15 * 60 * 1000,
       limit: 40,
       standardHeaders: true,
-      legacyHeaders: false
+      legacyHeaders: false,
+      handler(req, res) {
+        req.log?.("rate_limiting_throttle", {
+          eventType: "rate_limit_exceeded_auth",
+          severity: "WARN",
+          outcome: "denied",
+          what: { limit: 40, windowMs: 15 * 60 * 1000 }
+        });
+        req.log?.("security_threat", {
+          eventType: "possible_auth_bruteforce_rate_limit",
+          severity: "WARN",
+          outcome: "denied",
+          what: { limit: 40, windowMs: 15 * 60 * 1000 }
+        });
+        res.status(429).json({ error: "Too many authentication attempts. Try again later." });
+      }
     })
   );
   app.use(
@@ -379,7 +527,22 @@ export function createApp(overrides = {}) {
       windowMs: 60 * 1000,
       limit: 30,
       standardHeaders: true,
-      legacyHeaders: false
+      legacyHeaders: false,
+      handler(req, res) {
+        req.log?.("rate_limiting_throttle", {
+          eventType: "rate_limit_exceeded_write_api",
+          severity: "WARN",
+          outcome: "denied",
+          what: { limit: 30, windowMs: 60 * 1000 }
+        });
+        req.log?.("security_threat", {
+          eventType: "write_api_abuse_rate_limit",
+          severity: "WARN",
+          outcome: "denied",
+          what: { limit: 30, windowMs: 60 * 1000 }
+        });
+        res.status(429).json({ error: "Too many write requests. Try again shortly." });
+      }
     })
   );
   app.use(express.static(cfg.publicDir));
@@ -406,23 +569,66 @@ export function createApp(overrides = {}) {
   const requiredUser = attachUser(store, cfg.jwtSecret, true);
 
   app.get("/api/health", (_req, res) => {
+    _req.log?.("health_check_heartbeat", {
+      eventType: "health_check_requested",
+      severity: "INFO",
+      outcome: "success",
+      what: { endpoint: "/api/health" }
+    });
     res.json({
       ok: true,
       service: "mixforge-backend",
       version: "0.1.0",
       storage: "local-json",
       dataRoot: cfg.dataRoot,
+      logRoot: cfg.logRoot,
       timestamp: now()
     });
   });
 
-  app.get("/api/readiness", (_req, res) => {
+  app.get("/api/readiness", (req, res) => {
     const readiness = evaluateReadiness(cfg);
+    req.log?.("health_check_heartbeat", {
+      eventType: "readiness_check_requested",
+      severity: readiness.ready ? "INFO" : "WARN",
+      outcome: readiness.ready ? "success" : "failure",
+      what: {
+        endpoint: "/api/readiness",
+        ready: readiness.ready,
+        failedChecks: readiness.checks.filter((check) => !check.ok && check.required).map((check) => check.id)
+      }
+    });
     res.status(readiness.ready ? 200 : 503).json(readiness);
   });
 
-  app.get("/api/diagnostics", (_req, res) => {
-    res.json(evaluateReadiness(cfg));
+  app.get("/api/diagnostics", (req, res) => {
+    const diagnostics = {
+      ...evaluateReadiness(cfg),
+      logging: logStore.health(),
+      logTaxonomy: LOG_TYPES
+    };
+    req.log?.("health_check_heartbeat", {
+      eventType: "diagnostics_requested",
+      severity: diagnostics.ready ? "INFO" : "WARN",
+      outcome: diagnostics.ready ? "success" : "failure",
+      what: { endpoint: "/api/diagnostics", ready: diagnostics.ready }
+    });
+    res.json(diagnostics);
+  });
+
+  app.get("/api/logs/taxonomy", (req, res) => {
+    req.log?.("data_access_query", {
+      eventType: "log_taxonomy_read",
+      severity: "INFO",
+      outcome: "success",
+      what: { logTypes: Object.keys(LOG_TYPES).length }
+    });
+    res.json({
+      format: "jsonl",
+      root: cfg.logRoot,
+      retentionDays: cfg.logRetentionDays,
+      logTypes: LOG_TYPES
+    });
   });
 
   app.post("/api/auth/signup", async (req, res, next) => {
@@ -432,12 +638,32 @@ export function createApp(overrides = {}) {
       const name = String(req.body.name || email.split("@")[0] || "Creator").trim();
 
       if (!email.includes("@")) {
+        req.log?.("security_threat", {
+          eventType: "input_validation_failed_signup_email",
+          severity: "WARN",
+          outcome: "failure",
+          actor: { userId: null, userEmailHash: hashIdentifier(email), authenticated: false },
+          what: { field: "email" }
+        });
         return res.status(400).json({ error: "A valid email is required." });
       }
       if (password.length < 6) {
+        req.log?.("security_threat", {
+          eventType: "input_validation_failed_signup_password",
+          severity: "WARN",
+          outcome: "failure",
+          actor: { userId: null, userEmailHash: hashIdentifier(email), authenticated: false },
+          what: { field: "password", reason: "too_short" }
+        });
         return res.status(400).json({ error: "Password must be at least 6 characters." });
       }
       if (store.find("users", (user) => user.email === email)) {
+        req.log?.("authentication", {
+          eventType: "signup_duplicate_email",
+          severity: "WARN",
+          outcome: "failure",
+          actor: { userId: null, userEmailHash: hashIdentifier(email), authenticated: false }
+        });
         return res.status(409).json({ error: "That email already has a MixForge account." });
       }
 
@@ -456,6 +682,26 @@ export function createApp(overrides = {}) {
       };
 
       store.insert("users", user);
+      req.log?.("audit", {
+        eventType: "user_account_created",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: user.id, userEmailHash: hashIdentifier(user.email), authenticated: true },
+        what: { userId: user.id, planId: user.planId }
+      });
+      req.log?.("authentication", {
+        eventType: "signup_success",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: user.id, userEmailHash: hashIdentifier(user.email), authenticated: true }
+      });
+      req.log?.("session", {
+        eventType: "session_created_signup",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: user.id, userEmailHash: hashIdentifier(user.email), authenticated: true },
+        what: { expiresIn: "14d" }
+      });
       return res.status(201).json({
         user: toPublicUser(user),
         token: signToken(user, cfg.jwtSecret)
@@ -472,9 +718,34 @@ export function createApp(overrides = {}) {
       const user = store.find("users", (candidate) => candidate.email === email);
 
       if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+        req.log?.("authentication", {
+          eventType: "login_failure",
+          severity: "WARN",
+          outcome: "failure",
+          actor: { userId: user?.id || null, userEmailHash: hashIdentifier(email), authenticated: false }
+        });
+        req.log?.("security_threat", {
+          eventType: "auth_failure_password",
+          severity: "WARN",
+          outcome: "failure",
+          actor: { userId: user?.id || null, userEmailHash: hashIdentifier(email), authenticated: false }
+        });
         return res.status(401).json({ error: "Incorrect email or password." });
       }
 
+      req.log?.("authentication", {
+        eventType: "login_success",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: user.id, userEmailHash: hashIdentifier(user.email), authenticated: true }
+      });
+      req.log?.("session", {
+        eventType: "session_created_login",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: user.id, userEmailHash: hashIdentifier(user.email), authenticated: true },
+        what: { expiresIn: "14d" }
+      });
       return res.json({
         user: toPublicUser(user),
         token: signToken(user, cfg.jwtSecret)
@@ -485,6 +756,18 @@ export function createApp(overrides = {}) {
   });
 
   app.get("/api/me", requiredUser, (req, res) => {
+    req.log?.("audit", {
+      eventType: "sensitive_user_profile_read",
+      severity: "INFO",
+      outcome: "success",
+      what: { userId: req.user.id }
+    });
+    req.log?.("data_access_query", {
+      eventType: "user_profile_read",
+      severity: "INFO",
+      outcome: "success",
+      what: { collection: "users", userId: req.user.id }
+    });
     res.json({ user: toPublicUser(req.user) });
   });
 
@@ -498,6 +781,12 @@ export function createApp(overrides = {}) {
 
   app.post("/api/recordings", optionalUser, recordingUpload.single("audio"), (req, res) => {
     if (!req.file) {
+      req.log?.("security_threat", {
+        eventType: "input_validation_failed_recording_missing_audio",
+        severity: "WARN",
+        outcome: "failure",
+        what: { field: "audio" }
+      });
       return res.status(400).json({ error: "Upload an audio file in the 'audio' form field." });
     }
 
@@ -518,6 +807,23 @@ export function createApp(overrides = {}) {
     };
 
     store.insert("recordings", recording);
+    req.log?.("audit", {
+      eventType: "recording_uploaded",
+      severity: "INFO",
+      outcome: "success",
+      what: {
+        recordingId: recording.id,
+        userId: recording.userId,
+        sizeBytes: recording.sizeBytes,
+        mimeType: recording.mimeType
+      }
+    });
+    req.log?.("transaction_business", {
+      eventType: "recording_created",
+      severity: "INFO",
+      outcome: "success",
+      what: { recordingId: recording.id, beatId: recording.beatId, durationSeconds: recording.durationSeconds }
+    });
     return res.status(201).json({ recording: publicRecording(recording) });
   });
 
@@ -526,6 +832,12 @@ export function createApp(overrides = {}) {
       .list("recordings")
       .filter((recording) => !req.user || recording.userId === req.user.id || recording.userId === null)
       .map(publicRecording);
+    req.log?.("data_access_query", {
+      eventType: "recordings_list_read",
+      severity: "INFO",
+      outcome: "success",
+      what: { collection: "recordings", count: recordings.length }
+    });
     res.json({ recordings });
   });
 
@@ -533,12 +845,42 @@ export function createApp(overrides = {}) {
     try {
       const recording = store.find("recordings", (candidate) => candidate.id === req.params.id);
       if (!recording) {
+        req.log?.("access_authorization", {
+          eventType: "recording_audio_missing",
+          severity: "WARN",
+          outcome: "failure",
+          what: { recordingId: req.params.id }
+        });
         return res.status(404).json({ error: "Recording not found." });
       }
       if (!canAccessOwnedRecord(recording, req.user)) {
+        req.log?.("access_authorization", {
+          eventType: "recording_audio_access_denied",
+          severity: "WARN",
+          outcome: "denied",
+          what: { recordingId: recording.id, ownerUserId: recording.userId }
+        });
+        req.log?.("audit", {
+          eventType: "sensitive_recording_audio_read_denied",
+          severity: "WARN",
+          outcome: "denied",
+          what: { recordingId: recording.id, ownerUserId: recording.userId }
+        });
         return res.status(403).json({ error: "Recording access denied." });
       }
       const fullPath = ensureInside(cfg.uploadRoot, recording.filePath);
+      req.log?.("audit", {
+        eventType: "sensitive_recording_audio_read",
+        severity: "INFO",
+        outcome: "success",
+        what: { recordingId: recording.id, ownerUserId: recording.userId, mimeType: recording.mimeType }
+      });
+      req.log?.("data_access_query", {
+        eventType: "recording_audio_file_read",
+        severity: "INFO",
+        outcome: "success",
+        what: { collection: "recordings", recordingId: recording.id }
+      });
       res.type(recording.mimeType);
       return res.sendFile(fullPath);
     } catch (error) {
@@ -551,6 +893,18 @@ export function createApp(overrides = {}) {
       ? store.find("recordings", (candidate) => candidate.id === req.body.recordingId)
       : null;
     if (recording && !canAccessOwnedRecord(recording, req.user)) {
+      req.log?.("access_authorization", {
+        eventType: "project_recording_attach_denied",
+        severity: "WARN",
+        outcome: "denied",
+        what: { recordingId: recording.id, ownerUserId: recording.userId }
+      });
+      req.log?.("audit", {
+        eventType: "project_create_denied_cross_user_recording",
+        severity: "WARN",
+        outcome: "denied",
+        what: { recordingId: recording.id, ownerUserId: recording.userId }
+      });
       return res.status(403).json({ error: "Recording access denied." });
     }
 
@@ -568,6 +922,18 @@ export function createApp(overrides = {}) {
     };
 
     store.insert("projects", project);
+    req.log?.("audit", {
+      eventType: "project_created",
+      severity: "INFO",
+      outcome: "success",
+      what: { projectId: project.id, recordingId: project.recordingId, mode: project.mode }
+    });
+    req.log?.("transaction_business", {
+      eventType: "project_workflow_created",
+      severity: "INFO",
+      outcome: "success",
+      what: { projectId: project.id, mode: project.mode }
+    });
     return res.status(201).json({ project });
   });
 
@@ -575,6 +941,12 @@ export function createApp(overrides = {}) {
     const projects = store
       .list("projects")
       .filter((project) => !req.user || project.userId === req.user.id || project.userId === null);
+    req.log?.("data_access_query", {
+      eventType: "projects_list_read",
+      severity: "INFO",
+      outcome: "success",
+      what: { collection: "projects", count: projects.length }
+    });
     res.json({ projects });
   });
 
@@ -589,12 +961,36 @@ export function createApp(overrides = {}) {
         ? ensureInside(cfg.uploadRoot, recording.filePath)
         : null;
     if (recording && !canAccessOwnedRecord(recording, req.user)) {
+      req.log?.("access_authorization", {
+        eventType: "stem_job_recording_access_denied",
+        severity: "WARN",
+        outcome: "denied",
+        what: { recordingId: recording.id, ownerUserId: recording.userId }
+      });
+      req.log?.("audit", {
+        eventType: "stem_job_create_denied_cross_user_recording",
+        severity: "WARN",
+        outcome: "denied",
+        what: { recordingId: recording.id, ownerUserId: recording.userId }
+      });
       return res.status(403).json({ error: "Recording access denied." });
     }
     if (!sourcePath) {
+      req.log?.("security_threat", {
+        eventType: "input_validation_failed_stem_missing_audio",
+        severity: "WARN",
+        outcome: "failure",
+        what: { recordingId: req.body.recordingId || null, hasUpload: Boolean(req.file) }
+      });
       return res.status(400).json({ error: "Upload audio or select a recording before creating a stem job." });
     }
     if (!cfg.stemsplitApiKey && !cfg.demoMode) {
+      req.log?.("error", {
+        eventType: "stemsplit_config_missing",
+        severity: "ERROR",
+        outcome: "failure",
+        what: { provider: "stemsplit", demoMode: cfg.demoMode }
+      });
       return res.status(503).json({ error: "StemSplit is not configured." });
     }
 
@@ -628,14 +1024,36 @@ export function createApp(overrides = {}) {
     };
 
     store.insert("stemJobs", job);
+    req.log?.("audit", {
+      eventType: "stem_job_created",
+      severity: "INFO",
+      outcome: "success",
+      what: { jobId: job.id, provider: job.provider, recordingId: job.recordingId, mode: job.mode }
+    });
+    req.log?.("transaction_business", {
+      eventType: "stem_job_queued",
+      severity: "INFO",
+      outcome: "success",
+      what: { jobId: job.id, provider: job.provider, mode: job.mode }
+    });
 
     if (job.provider === "demo") {
+      req.log?.("agent_decision_reasoning", {
+        eventType: "demo_mode_provider_selected",
+        severity: "WARN",
+        outcome: "deferred",
+        what: {
+          jobId: job.id,
+          selectedProvider: "demo",
+          reason: "StemSplit is not configured and MIXFORGE_DEMO_MODE is enabled."
+        }
+      });
       return res.status(202).json({ mode: "demo", job: publicStemJob(job) });
     }
 
     const client = stemsplitClient(cfg);
-    return client.jobs
-      .create({
+    return timedDependency(req, "stemsplit", "jobs.create", () =>
+      client.jobs.create({
         audio: sourcePath,
         outputType: "FOUR_STEMS",
         quality: "BALANCED",
@@ -646,6 +1064,7 @@ export function createApp(overrides = {}) {
           sourceName: job.sourceName
         }
       })
+    )
       .then((remote) => {
         const updated = store.update("stemJobs", job.id, {
           providerJobId: remote.id,
@@ -654,12 +1073,25 @@ export function createApp(overrides = {}) {
           stems: publicStemOutputs(remote.outputs),
           externalCreatedAt: remote.raw?.createdAt || null
         });
+        req.log?.("transaction_business", {
+          eventType: "stemsplit_job_submitted",
+          severity: "INFO",
+          outcome: "success",
+          what: { jobId: job.id, providerJobId: remote.id, providerStatus: remote.status }
+        });
         return res.status(202).json({ job: publicStemJob(updated) });
       })
       .catch((error) => {
         const failed = store.update("stemJobs", job.id, {
           status: "failed",
           errorMessage: error.message
+        });
+        req.log?.("error", {
+          eventType: "stemsplit_job_create_failed",
+          severity: "ERROR",
+          outcome: "failure",
+          what: { jobId: job.id, provider: "stemsplit" },
+          error
         });
         return res.status(502).json({
           error: "StemSplit job creation failed.",
@@ -672,21 +1104,54 @@ export function createApp(overrides = {}) {
   app.get("/api/stems/jobs/:id", optionalUser, async (req, res, next) => {
     const job = store.find("stemJobs", (candidate) => candidate.id === req.params.id);
     if (!job) {
+      req.log?.("access_authorization", {
+        eventType: "stem_job_missing",
+        severity: "WARN",
+        outcome: "failure",
+        what: { jobId: req.params.id }
+      });
       return res.status(404).json({ error: "Stem job not found." });
     }
     if (job.userId && job.userId !== req.user?.id) {
+      req.log?.("access_authorization", {
+        eventType: "stem_job_access_denied",
+        severity: "WARN",
+        outcome: "denied",
+        what: { jobId: job.id, ownerUserId: job.userId }
+      });
+      req.log?.("audit", {
+        eventType: "stem_job_read_denied",
+        severity: "WARN",
+        outcome: "denied",
+        what: { jobId: job.id, ownerUserId: job.userId }
+      });
       return res.status(403).json({ error: "Stem job access denied." });
     }
     try {
+      const previousStatus = job.status;
       const refreshed =
         job.provider === "stemsplit"
-          ? await refreshStemSplitJob(store, cfg, job)
+          ? await refreshStemSplitJob(store, cfg, job, req)
           : job.provider === "demo"
             ? refreshDemoStemJob(store, job)
           : store.update("stemJobs", job.id, {
               status: "failed",
               errorMessage: `Unsupported stem provider: ${job.provider || "unknown"}`
             });
+      req.log?.("data_access_query", {
+        eventType: "stem_job_read",
+        severity: "INFO",
+        outcome: "success",
+        what: { jobId: job.id, provider: job.provider, status: refreshed.status }
+      });
+      if (previousStatus !== refreshed.status) {
+        req.log?.("transaction_business", {
+          eventType: "stem_job_status_changed",
+          severity: refreshed.status === "failed" ? "ERROR" : "INFO",
+          outcome: refreshed.status === "failed" ? "failure" : "success",
+          what: { jobId: job.id, provider: job.provider, from: previousStatus, to: refreshed.status }
+        });
+      }
       return res.json({ job: publicStemJob(refreshed) });
     } catch (error) {
       return next(error);
@@ -702,6 +1167,12 @@ export function createApp(overrides = {}) {
       const planId = String(req.body.planId || "").trim();
       const plan = PLAN_CATALOG[planId];
       if (!plan) {
+        req.log?.("security_threat", {
+          eventType: "input_validation_failed_unknown_plan",
+          severity: "WARN",
+          outcome: "failure",
+          what: { planId }
+        });
         return res.status(400).json({ error: "Unknown plan." });
       }
 
@@ -709,17 +1180,53 @@ export function createApp(overrides = {}) {
         if (req.user) {
           store.update("users", req.user.id, { planId: "free" });
         }
+        req.log?.("audit", {
+          eventType: "free_plan_activated",
+          severity: "INFO",
+          outcome: "success",
+          what: { planId: "free", userId: req.user?.id || null }
+        });
+        req.log?.("transaction_business", {
+          eventType: "checkout_free_plan_completed",
+          severity: "INFO",
+          outcome: "success",
+          what: { planId: "free" }
+        });
         return res.json({ mode: "free", plan, message: "Free plan is active." });
       }
 
       const priceId = cfg.stripePrices[plan.id];
       if (plan.id !== "free" && !req.user) {
+        req.log?.("access_authorization", {
+          eventType: "paid_checkout_denied_missing_auth",
+          severity: "WARN",
+          outcome: "denied",
+          what: { planId: plan.id }
+        });
         return res.status(401).json({ error: "Authentication is required for paid checkout." });
       }
       if (!cfg.stripeSecretKey || !priceId) {
         if (!cfg.demoMode) {
+          req.log?.("error", {
+            eventType: "stripe_checkout_config_missing",
+            severity: "ERROR",
+            outcome: "failure",
+            what: { planId: plan.id, stripeSecretConfigured: Boolean(cfg.stripeSecretKey), priceConfigured: Boolean(priceId) }
+          });
           return res.status(503).json({ error: "Stripe checkout is not configured." });
         }
+        req.log?.("audit", {
+          eventType: "demo_checkout_requested",
+          severity: "WARN",
+          outcome: "deferred",
+          what: { planId: plan.id, noPaymentCaptured: true, paidPlanActivated: false }
+        });
+        req.log?.("transaction_business", {
+          eventType: "checkout_demo_mode_response",
+          severity: "WARN",
+          outcome: "deferred",
+          what: { planId: plan.id, provider: "demo" }
+        });
         return res.json({
           mode: "demo",
           plan,
@@ -756,7 +1263,9 @@ export function createApp(overrides = {}) {
           checkoutSession.customer_email = req.user ? req.user.email : normalizeEmail(req.body.email);
         }
 
-        const session = await stripe.checkout.sessions.create(checkoutSession);
+        const session = await timedDependency(req, "stripe", "checkout.sessions.create", () =>
+          stripe.checkout.sessions.create(checkoutSession)
+        );
 
         store.insert("payments", {
           id: crypto.randomUUID(),
@@ -768,6 +1277,18 @@ export function createApp(overrides = {}) {
           createdAt: now()
         });
 
+        req.log?.("audit", {
+          eventType: "stripe_checkout_session_created",
+          severity: "INFO",
+          outcome: "success",
+          what: { planId: plan.id, checkoutSessionId: session.id, provider: "stripe" }
+        });
+        req.log?.("transaction_business", {
+          eventType: "paid_checkout_started",
+          severity: "INFO",
+          outcome: "success",
+          what: { planId: plan.id, checkoutSessionId: session.id, provider: "stripe" }
+        });
         return res.json({ mode: "stripe", plan, checkoutUrl: session.url });
       }
     } catch (error) {
@@ -784,11 +1305,38 @@ export function createApp(overrides = {}) {
       createdAt: now()
     };
     store.insert("contacts", contact);
+    req.log?.("audit", {
+      eventType: "contact_message_created",
+      severity: "INFO",
+      outcome: "success",
+      actor: { userId: req.user?.id || null, userEmailHash: hashIdentifier(contact.email), authenticated: Boolean(req.user) },
+      what: { contactId: contact.id, emailHash: hashIdentifier(contact.email) }
+    });
+    req.log?.("transaction_business", {
+      eventType: "contact_lead_created",
+      severity: "INFO",
+      outcome: "success",
+      actor: { userId: req.user?.id || null, userEmailHash: hashIdentifier(contact.email), authenticated: Boolean(req.user) },
+      what: { contactId: contact.id }
+    });
+    req.log?.("user_behavior_analytics", {
+      eventType: "contact_form_submitted",
+      severity: "INFO",
+      outcome: "success",
+      actor: { userId: req.user?.id || null, userEmailHash: hashIdentifier(contact.email), authenticated: Boolean(req.user) },
+      what: { contactId: contact.id }
+    });
     res.status(201).json({ contact });
   });
 
   app.use((req, res) => {
     if (req.path.startsWith("/api/")) {
+      req.log?.("access_authorization", {
+        eventType: "api_route_not_found",
+        severity: "WARN",
+        outcome: "failure",
+        what: { path: req.path }
+      });
       return res.status(404).json({ error: "API route not found." });
     }
     return res.sendFile(path.join(cfg.publicDir, "index.html"));
@@ -796,8 +1344,21 @@ export function createApp(overrides = {}) {
 
   app.use((error, _req, res, _next) => {
     if (error instanceof multer.MulterError) {
+      _req.log?.("security_threat", {
+        eventType: "upload_validation_failed",
+        severity: "WARN",
+        outcome: "failure",
+        what: { code: error.code },
+        error
+      });
       return res.status(400).json({ error: error.message });
     }
+    _req.log?.("error", {
+      eventType: "unhandled_backend_error",
+      severity: "ERROR",
+      outcome: "failure",
+      error
+    });
     console.error(error);
     return res.status(500).json({ error: "Unexpected MixForge backend error." });
   });
