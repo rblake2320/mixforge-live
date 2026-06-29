@@ -1,5 +1,54 @@
 # MixForge Production Deployment
 
+## Recommended: Hostinger KVM 2 + Cloudflare
+
+Hostinger KVM 2 (2.25.184.107) runs the Node.js process and owns the `/data` disk.
+Cloudflare sits in front as DNS proxy, providing free SSL and DDoS protection.
+
+```
+User → Cloudflare (DNS + SSL + CDN) → Hostinger KVM 2 → nginx → Node :4173 → /data
+```
+
+### One-time VPS setup
+
+```bash
+ssh root@2.25.184.107
+bash <(curl -fsSL https://raw.githubusercontent.com/rblake2320/mixforge-live/main/deploy/vps-setup.sh) YOUR_DOMAIN
+```
+
+Or clone the repo first and run locally:
+
+```bash
+bash deploy/vps-setup.sh YOUR_DOMAIN
+```
+
+The script installs Node 22, PM2, nginx, clones the repo to `/opt/mixforge`, and creates `/data`.
+
+### After setup
+
+1. Edit `/opt/mixforge/.env` — fill in all secrets (see Required Environment Variables below)
+2. `pm2 restart mixforge`
+3. In Cloudflare dashboard: add **A record** `YOUR_DOMAIN → 2.25.184.107`, **Proxied (orange cloud)**
+4. Set Cloudflare **SSL/TLS → Full** (not Flexible)
+5. Confirm: `curl https://YOUR_DOMAIN/api/health`
+
+### Ongoing deploys
+
+```bash
+ssh root@2.25.184.107
+cd /opt/mixforge && git pull && npm ci --omit=dev && pm2 restart mixforge
+```
+
+### nginx config
+
+`deploy/nginx.conf` — already includes Cloudflare IP ranges for real-IP passthrough and sets `client_max_body_size 110m` to accommodate the 100MB recording upload limit. Replace `YOUR_DOMAIN_HERE` if editing manually.
+
+### PM2 config
+
+`ecosystem.config.cjs` at the repo root. Runs one instance on `127.0.0.1:4173`, restarts on crash, caps memory at 512MB.
+
+---
+
 The simplest launch path is a single Node web service because Express already serves both the API and the static frontend.
 
 ## Required Environment Variables
