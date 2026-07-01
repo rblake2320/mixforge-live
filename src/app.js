@@ -155,7 +155,10 @@ function audioFileFilter(req, file, cb) {
       mimetype: file.mimetype
     }
   });
-  cb(new Error("Only audio uploads are supported."));
+  const rejection = new Error("Only audio uploads are supported.");
+  rejection.status = 400;
+  rejection.type = "unsupported_upload_type";
+  cb(rejection);
 }
 
 function publicRecording(recording) {
@@ -633,8 +636,17 @@ export function createApp(overrides = {}) {
 
   app.post("/api/auth/signup", async (req, res, next) => {
     try {
+      if (typeof req.body.email !== "string" || typeof req.body.password !== "string") {
+        req.log?.("security_threat", {
+          eventType: "input_validation_failed_signup_types",
+          severity: "WARN",
+          outcome: "failure",
+          what: { emailType: typeof req.body.email, passwordType: typeof req.body.password }
+        });
+        return res.status(400).json({ error: "Email and password must be strings." });
+      }
       const email = normalizeEmail(req.body.email);
-      const password = String(req.body.password || "");
+      const password = req.body.password;
       const name = String(req.body.name || email.split("@")[0] || "Creator").trim();
 
       if (!email.includes("@")) {
@@ -713,8 +725,17 @@ export function createApp(overrides = {}) {
 
   app.post("/api/auth/login", async (req, res, next) => {
     try {
+      if (typeof req.body.email !== "string" || typeof req.body.password !== "string") {
+        req.log?.("security_threat", {
+          eventType: "input_validation_failed_login_types",
+          severity: "WARN",
+          outcome: "failure",
+          what: { emailType: typeof req.body.email, passwordType: typeof req.body.password }
+        });
+        return res.status(400).json({ error: "Email and password must be strings." });
+      }
       const email = normalizeEmail(req.body.email);
-      const password = String(req.body.password || "");
+      const password = req.body.password;
       const user = store.find("users", (candidate) => candidate.email === email);
 
       if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
@@ -1353,6 +1374,22 @@ export function createApp(overrides = {}) {
       });
       return res.status(400).json({ error: error.message });
     }
+
+    // Boundary parse/size failures from express.json (malformed body, oversized
+    // payload) carry a 4xx status. Surface them as client errors instead of
+    // masking them behind a generic 500.
+    const boundaryStatus = Number(error.status || error.statusCode);
+    if (Number.isInteger(boundaryStatus) && boundaryStatus >= 400 && boundaryStatus < 500) {
+      _req.log?.("security_threat", {
+        eventType: "request_body_validation_failed",
+        severity: "WARN",
+        outcome: "failure",
+        what: { status: boundaryStatus, type: error.type || null },
+        error
+      });
+      return res.status(boundaryStatus).json({ error: error.message || "Invalid request." });
+    }
+
     _req.log?.("error", {
       eventType: "unhandled_backend_error",
       severity: "ERROR",

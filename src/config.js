@@ -10,10 +10,8 @@ const host = process.env.HOST || (isProduction ? "0.0.0.0" : "127.0.0.1");
 const port = Number(process.env.PORT || 4173);
 const defaultDataRoot = isProduction ? "/data" : path.join(rootDir, "data");
 const defaultJwtSecret = "mixforge-dev-secret-change-me";
-const demoMode =
-  process.env.MIXFORGE_DEMO_MODE === undefined
-    ? !isProduction
-    : ["1", "true", "yes", "on"].includes(process.env.MIXFORGE_DEMO_MODE.toLowerCase());
+const demoModeRaw = (process.env.MIXFORGE_DEMO_MODE ?? "").trim().toLowerCase();
+const demoMode = demoModeRaw === "" ? !isProduction : ["1", "true", "yes", "on"].includes(demoModeRaw);
 
 export const config = {
   rootDir,

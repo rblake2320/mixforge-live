@@ -1,6 +1,24 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// Secrets that are publicly known because they ship in this repo (the code
+// default and the .env.example placeholder). Booting production with any of
+// these means every JWT can be forged, so they must fail the readiness gate
+// exactly like the raw code default does.
+const KNOWN_WEAK_JWT_SECRETS = new Set([
+  "mixforge-dev-secret-change-me",
+  "replace-this-with-a-long-random-secret"
+]);
+
+function isWeakJwtSecret(cfg) {
+  return (
+    !cfg.jwtSecret ||
+    cfg.jwtSecret === cfg.defaultJwtSecret ||
+    KNOWN_WEAK_JWT_SECRETS.has(cfg.jwtSecret) ||
+    cfg.jwtSecret.length < 32
+  );
+}
+
 function isHttpsOrLocal(url) {
   try {
     const parsed = new URL(url);
@@ -76,8 +94,10 @@ export function evaluateReadiness(cfg) {
       id: "jwt_secret",
       label: "JWT secret is configured",
       required: true,
-      ok: Boolean(cfg.jwtSecret && cfg.jwtSecret !== cfg.defaultJwtSecret && cfg.jwtSecret.length >= 32),
-      detail: cfg.jwtSecret === cfg.defaultJwtSecret ? "Using development default JWT secret." : "Configured"
+      ok: !isWeakJwtSecret(cfg),
+      detail: isWeakJwtSecret(cfg)
+        ? "JWT secret is missing, a known placeholder, or shorter than 32 chars. Set a unique random JWT_SECRET."
+        : "Configured"
     },
     {
       id: "public_base_url",
