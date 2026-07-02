@@ -736,12 +736,42 @@
     });
   }
 
+  async function uploadAudioFile(file) {
+    await requireAuthenticated("signup");
+    const form = new FormData();
+    form.append("audio", file, file.name);
+    form.append("durationSeconds", "0");
+    form.append("beatId", selectedBeat().id);
+    form.append("beatName", selectedBeat().name);
+    form.append("preset", selectedPreset());
+    form.append("title", file.name.replace(/\.[^.]+$/, "") || "Mashup Upload");
+    const saved = await api("/api/recordings", { method: "POST", body: form });
+    state.lastRecording = saved.recording;
+    return saved.recording;
+  }
+
+  async function importLinkStemJob(sourceUrl, button) {
+    await requireAuthenticated("signup");
+    const created = await api("/api/stems/jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        sourceUrl,
+        stems: "vocals,drums,bass,other",
+        bpmSync: true,
+        keyMatch: true
+      })
+    });
+    const completed = await pollStemJob(created.job.id, button);
+    return completed;
+  }
+
   function wireMashup() {
     const button = document.querySelector("#panel-mashup .mashup-controls .btn-primary");
     if (!button) {
       return;
     }
     button.onclick = null;
+    const panel = document.querySelector("#panel-mashup .mashup-panel");
     const controls = button.closest(".mashup-controls");
     let uploadInput = document.getElementById("mashupUploadInput");
     if (!uploadInput && controls) {
@@ -753,7 +783,7 @@
       const uploadButton = document.createElement("button");
       uploadButton.className = "btn btn-secondary";
       uploadButton.type = "button";
-      uploadButton.textContent = "Upload Audio";
+      uploadButton.textContent = "Load from device / phone";
       uploadButton.addEventListener("click", () => uploadInput.click());
       uploadInput.addEventListener("change", async () => {
         const file = uploadInput.files?.[0];
@@ -761,20 +791,8 @@
           return;
         }
         try {
-          await requireAuthenticated("signup");
-          const form = new FormData();
-          form.append("audio", file, file.name);
-          form.append("durationSeconds", "0");
-          form.append("beatId", selectedBeat().id);
-          form.append("beatName", selectedBeat().name);
-          form.append("preset", selectedPreset());
-          form.append("title", file.name.replace(/\.[^.]+$/, "") || "Mashup Upload");
-          const saved = await api("/api/recordings", {
-            method: "POST",
-            body: form
-          });
-          state.lastRecording = saved.recording;
-          toast("Audio uploaded and ready for stem separation.");
+          await uploadAudioFile(file);
+          toast("Audio loaded and ready for stem separation.");
         } catch (error) {
           toast(error.message);
         } finally {
@@ -784,6 +802,95 @@
       controls.insertBefore(uploadButton, button);
       controls.appendChild(uploadInput);
     }
+
+    // Paste-a-link import: forwards the URL to the backend, which routes it to
+    // StemSplit (YouTube / SoundCloud / direct audio URL). No client-side ripping.
+    if (panel && !document.getElementById("mashupLinkRow")) {
+      const linkRow = document.createElement("div");
+      linkRow.id = "mashupLinkRow";
+      linkRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px;";
+      const linkInput = document.createElement("input");
+      linkInput.type = "url";
+      linkInput.id = "mashupLinkInput";
+      linkInput.placeholder = "Paste a YouTube / SoundCloud / audio link…";
+      linkInput.autocomplete = "off";
+      linkInput.style.cssText =
+        "flex:1;min-width:220px;padding:10px 12px;border-radius:8px;border:1px solid var(--color-border,#333);background:var(--color-surface,#141414);color:inherit;";
+      const linkButton = document.createElement("button");
+      linkButton.className = "btn btn-secondary";
+      linkButton.type = "button";
+      linkButton.textContent = "Import Link";
+      linkButton.addEventListener("click", async () => {
+        const value = linkInput.value.trim();
+        if (!value) {
+          toast("Paste a link first.");
+          return;
+        }
+        const original = linkButton.textContent;
+        linkButton.disabled = true;
+        linkButton.textContent = "Importing…";
+        try {
+          const completed = await importLinkStemJob(value, linkButton);
+          linkInput.value = "";
+          toast(
+            completed.provider === "demo"
+              ? completed.diagnostic || "Demo import completed. Configure StemSplit for real separation."
+              : `Imported and ${completed.status}.`,
+            { type: completed.provider === "demo" ? "warning" : "success", durationMs: 12000 }
+          );
+        } catch (error) {
+          toast(error.message);
+        } finally {
+          linkButton.disabled = false;
+          linkButton.textContent = original;
+        }
+      });
+      linkRow.appendChild(linkInput);
+      linkRow.appendChild(linkButton);
+      const hint = document.createElement("div");
+      hint.style.cssText = "flex-basis:100%;font-size:12px;color:var(--color-text-muted,#888);";
+      hint.textContent = "Import your own or licensed audio only. You are responsible for the rights to imported content.";
+      linkRow.appendChild(hint);
+      controls.parentElement.insertBefore(linkRow, controls.nextSibling);
+    }
+
+    // Drag-and-drop any audio file onto the mashup panel.
+    if (panel && !panel.dataset.dropWired) {
+      panel.dataset.dropWired = "true";
+      const stop = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      ["dragenter", "dragover"].forEach((type) =>
+        panel.addEventListener(type, (event) => {
+          stop(event);
+          panel.style.outline = "2px dashed var(--color-accent, #7c5cff)";
+        })
+      );
+      ["dragleave", "drop"].forEach((type) =>
+        panel.addEventListener(type, (event) => {
+          stop(event);
+          panel.style.outline = "";
+        })
+      );
+      panel.addEventListener("drop", async (event) => {
+        const file = event.dataTransfer?.files?.[0];
+        if (!file) {
+          return;
+        }
+        if (!file.type.startsWith("audio/")) {
+          toast("Drop an audio file (mp3, wav, m4a, flac, ogg…).");
+          return;
+        }
+        try {
+          await uploadAudioFile(file);
+          toast(`Loaded "${file.name}". Ready for stem separation.`);
+        } catch (error) {
+          toast(error.message);
+        }
+      });
+    }
+
     button.addEventListener("click", async () => {
       const original = button.textContent;
       button.textContent = "Processing...";

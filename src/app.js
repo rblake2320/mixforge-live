@@ -195,10 +195,107 @@ function ensureInside(root, relativePath) {
 }
 
 function stemsplitClient(cfg) {
+  // A factory override lets tests inject a fake StemSplit client (the real API
+  // is unreachable without a key). Production always uses the real SDK.
+  if (typeof cfg.stemsplitClientFactory === "function") {
+    return cfg.stemsplitClientFactory(cfg);
+  }
   if (!cfg.stemsplitApiKey) {
     return null;
   }
   return new StemSplit({ apiKey: cfg.stemsplitApiKey });
+}
+
+const MAX_SOURCE_URL_LENGTH = 2048;
+
+function normalizeSourceUrl(raw) {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > MAX_SOURCE_URL_LENGTH) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return null;
+  }
+  return parsed;
+}
+
+function classifyAudioSource(url) {
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  if (["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)) {
+    return "youtube";
+  }
+  if (host === "soundcloud.com" || host.endsWith(".soundcloud.com")) {
+    return "soundcloud";
+  }
+  return "url";
+}
+
+function sourceLabelFromUrl(url) {
+  if (url.hostname.replace(/^www\./, "") === "youtu.be") {
+    return `YouTube ${url.pathname.replace("/", "") || "link"}`.slice(0, 160);
+  }
+  const host = url.hostname.replace(/^www\./, "");
+  const last = url.pathname.split("/").filter(Boolean).pop() || url.searchParams.get("v") || "link";
+  return `${host} ${last}`.slice(0, 160);
+}
+
+// The dedicated youtube/soundcloud resources return raw responses while
+// jobs.create/get returns a wrapped StemJob; read fields defensively so one
+// normalizer covers every source kind.
+function normalizeRemoteJob(remote) {
+  return {
+    id: remote?.id ?? null,
+    status: remote?.status ?? null,
+    progress: remote?.progress ?? remote?.raw?.progress ?? null,
+    outputs: remote?.outputs ?? null,
+    createdAt: remote?.createdAt ?? remote?.raw?.createdAt ?? null,
+    completedAt: remote?.completedAt ?? remote?.raw?.completedAt ?? null,
+    errorMessage: remote?.errorMessage ?? null
+  };
+}
+
+function stemJobCreateCall(client, kind, { sourcePath, sourceUrl, metadata }) {
+  switch (kind) {
+    case "youtube":
+      return client.youtubeJobs.create(sourceUrl);
+    case "soundcloud":
+      return client.soundcloudJobs.create(sourceUrl);
+    case "url":
+      return client.jobs.create({
+        sourceUrl,
+        outputType: "FOUR_STEMS",
+        quality: "BALANCED",
+        outputFormat: "MP3",
+        metadata
+      });
+    default:
+      return client.jobs.create({
+        audio: sourcePath,
+        outputType: "FOUR_STEMS",
+        quality: "BALANCED",
+        outputFormat: "MP3",
+        metadata
+      });
+  }
+}
+
+function stemJobGetCall(client, kind, providerJobId) {
+  if (kind === "youtube") {
+    return client.youtubeJobs.get(providerJobId);
+  }
+  if (kind === "soundcloud") {
+    return client.soundcloudJobs.get(providerJobId);
+  }
+  return client.jobs.get(providerJobId);
 }
 
 function refreshDemoStemJob(store, job) {
@@ -244,7 +341,10 @@ function mapStemSplitStatus(status) {
 }
 
 function publicStemOutputs(outputs) {
-  if (!outputs) {
+  // Completed jobs return an object keyed by stem name. Create responses may
+  // return null or (for youtube) a string array of pending stem names — neither
+  // is a ready output map, so ignore anything that is not a plain object.
+  if (!outputs || Array.isArray(outputs) || typeof outputs !== "object") {
     return [];
   }
   return Object.entries(outputs).map(([type, output]) => ({
@@ -271,14 +371,16 @@ async function refreshStemSplitJob(store, cfg, job, req = null) {
     });
   }
 
-  const remote = req
-    ? await timedDependency(req, "stemsplit", "jobs.get", () => client.jobs.get(job.providerJobId))
-    : await client.jobs.get(job.providerJobId);
+  const kind = job.sourceKind || "file";
+  const rawRemote = req
+    ? await timedDependency(req, "stemsplit", `${kind}.get`, () => stemJobGetCall(client, kind, job.providerJobId))
+    : await stemJobGetCall(client, kind, job.providerJobId);
+  const remote = normalizeRemoteJob(rawRemote);
   const status = mapStemSplitStatus(remote.status);
   return store.update("stemJobs", job.id, {
     status,
-    progress: remote.raw?.progress ?? (status === "completed" ? 100 : job.progress),
-    completedAt: status === "completed" ? remote.raw?.completedAt || now() : job.completedAt || null,
+    progress: remote.progress ?? (status === "completed" ? 100 : job.progress),
+    completedAt: status === "completed" ? remote.completedAt || now() : job.completedAt || null,
     errorMessage: remote.errorMessage || null,
     stems: status === "completed" ? publicStemOutputs(remote.outputs) : job.stems
   });
@@ -1014,11 +1116,35 @@ export function createApp(overrides = {}) {
       ? store.find("recordings", (candidate) => candidate.id === req.body.recordingId)
       : null;
 
-    const sourcePath = req.file
-      ? req.file.path
-      : recording?.filePath
-        ? ensureInside(cfg.uploadRoot, recording.filePath)
-        : null;
+    // A link (YouTube / SoundCloud / direct audio URL) is a third source type
+    // alongside an uploaded file and a saved recording. When present it wins,
+    // and the actual fetch is done by StemSplit, not by MixForge.
+    const rawSourceUrl = req.body.sourceUrl;
+    let sourceUrl = null;
+    let sourceKind = "file";
+    if (rawSourceUrl !== undefined && rawSourceUrl !== null && String(rawSourceUrl).trim() !== "") {
+      const parsed = normalizeSourceUrl(rawSourceUrl);
+      if (!parsed) {
+        req.log?.("security_threat", {
+          eventType: "input_validation_failed_stem_source_url",
+          severity: "WARN",
+          outcome: "failure",
+          what: { reason: "invalid_or_unsupported_url" }
+        });
+        return res.status(400).json({ error: "Provide a valid http(s) link to import." });
+      }
+      sourceUrl = parsed.toString();
+      sourceKind = classifyAudioSource(parsed);
+    }
+
+    const sourcePath =
+      sourceKind !== "file"
+        ? null
+        : req.file
+          ? req.file.path
+          : recording?.filePath
+            ? ensureInside(cfg.uploadRoot, recording.filePath)
+            : null;
     if (recording && !canAccessOwnedRecord(recording, req.user)) {
       req.log?.("access_authorization", {
         eventType: "stem_job_recording_access_denied",
@@ -1034,14 +1160,16 @@ export function createApp(overrides = {}) {
       });
       return res.status(403).json({ error: "Recording access denied." });
     }
-    if (!sourcePath) {
+    if (sourceKind === "file" && !sourcePath) {
       req.log?.("security_threat", {
         eventType: "input_validation_failed_stem_missing_audio",
         severity: "WARN",
         outcome: "failure",
         what: { recordingId: req.body.recordingId || null, hasUpload: Boolean(req.file) }
       });
-      return res.status(400).json({ error: "Upload audio or select a recording before creating a stem job." });
+      return res
+        .status(400)
+        .json({ error: "Upload audio, select a recording, or paste a link before creating a stem job." });
     }
     if (!cfg.stemsplitApiKey && !cfg.demoMode) {
       req.log?.("error", {
@@ -1061,7 +1189,14 @@ export function createApp(overrides = {}) {
       progress: 5,
       providerJobId: null,
       recordingId: recording ? recording.id : null,
-      sourceName: String(req.body.sourceName || req.file?.originalname || recording?.title || "Mashup Source").slice(0, 160),
+      sourceKind,
+      sourceUrl,
+      sourceName: String(
+        req.body.sourceName ||
+          req.file?.originalname ||
+          recording?.title ||
+          (sourceUrl ? sourceLabelFromUrl(new URL(sourceUrl)) : "Mashup Source")
+      ).slice(0, 160),
       sourceFilePath: req.file ? path.relative(cfg.uploadRoot, req.file.path).replaceAll("\\", "/") : null,
       requestedStems: Array.isArray(req.body.stems)
         ? req.body.stems
@@ -1111,12 +1246,10 @@ export function createApp(overrides = {}) {
     }
 
     const client = stemsplitClient(cfg);
-    return timedDependency(req, "stemsplit", "jobs.create", () =>
-      client.jobs.create({
-        audio: sourcePath,
-        outputType: "FOUR_STEMS",
-        quality: "BALANCED",
-        outputFormat: "MP3",
+    return timedDependency(req, "stemsplit", `${sourceKind}.create`, () =>
+      stemJobCreateCall(client, sourceKind, {
+        sourcePath,
+        sourceUrl,
         metadata: {
           mixforgeJobId: job.id,
           userId: job.userId,
@@ -1124,19 +1257,20 @@ export function createApp(overrides = {}) {
         }
       })
     )
-      .then((remote) => {
+      .then((rawRemote) => {
+        const remote = normalizeRemoteJob(rawRemote);
         const updated = store.update("stemJobs", job.id, {
           providerJobId: remote.id,
           status: mapStemSplitStatus(remote.status),
-          progress: remote.raw?.progress ?? 10,
+          progress: remote.progress ?? 10,
           stems: publicStemOutputs(remote.outputs),
-          externalCreatedAt: remote.raw?.createdAt || null
+          externalCreatedAt: remote.createdAt || null
         });
         req.log?.("transaction_business", {
           eventType: "stemsplit_job_submitted",
           severity: "INFO",
           outcome: "success",
-          what: { jobId: job.id, providerJobId: remote.id, providerStatus: remote.status }
+          what: { jobId: job.id, providerJobId: remote.id, providerStatus: remote.status, sourceKind }
         });
         return res.status(202).json({ job: publicStemJob(updated) });
       })
