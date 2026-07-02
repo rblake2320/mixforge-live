@@ -353,6 +353,10 @@ describe("MixForge API", () => {
     });
     assert.equal(failedLogin.status, 401);
 
+    // Log writes are buffered off the request hot path; drain them before
+    // asserting on file contents.
+    await app.locals.logStore.flush();
+
     const logRoot = path.join(tmpRoot, "logs");
     const manifest = JSON.parse(fs.readFileSync(path.join(logRoot, "manifest.json"), "utf8"));
     assert.equal(manifest.format, "jsonl");

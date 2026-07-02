@@ -33,6 +33,7 @@ function shutdown(signal = "unknown") {
       outcome: "success",
       what: { signal }
     });
+    app.locals.logStore?.flushSync();
     process.exit(0);
   });
 }
@@ -46,6 +47,7 @@ process.on("uncaughtException", (error) => {
     outcome: "failure",
     error
   });
+  app.locals.logStore?.flushSync();
   console.error(error);
   process.exit(1);
 });

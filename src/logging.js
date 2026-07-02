@@ -167,17 +167,30 @@ function normalizeOutcome(outcome) {
 }
 
 export class JsonlLogStore {
-  constructor({ rootDir, serviceName = "mixforge-backend", serviceVersion = "0.1.0", retentionDays = 90 }) {
+  constructor({
+    rootDir,
+    serviceName = "mixforge-backend",
+    serviceVersion = "0.1.0",
+    retentionDays = 90,
+    maxFileBytes = 25 * 1024 * 1024
+  }) {
     this.rootDir = rootDir;
     this.serviceName = serviceName;
     this.serviceVersion = serviceVersion;
     this.retentionDays = retentionDays;
+    this.maxFileBytes = maxFileBytes;
+    // Buffered writes: log() appends to an in-memory queue per file and the
+    // queue drains asynchronously, so request handlers never block on disk.
+    this.pending = new Map();
+    this.flushScheduled = false;
+    this.writeChain = Promise.resolve();
     fs.mkdirSync(this.rootDir, { recursive: true });
     this.writeManifest();
     for (const type of LOG_TYPE_NAMES) {
       this.touch(this.fileFor(type));
     }
     this.touch(path.join(this.rootDir, "all.jsonl"));
+    this.pruneExpired();
   }
 
   fileFor(type) {
@@ -191,6 +204,110 @@ export class JsonlLogStore {
   touch(filePath) {
     if (!fs.existsSync(filePath)) {
       fs.writeFileSync(filePath, "");
+    }
+  }
+
+  rotatedName(filePath) {
+    const stamp = new Date().toISOString().replaceAll(":", "-").replace(/\.\d+Z$/, "Z");
+    return filePath.replace(/\.jsonl$/, `.${stamp}.rotated.jsonl`);
+  }
+
+  rotateIfNeeded(filePath) {
+    try {
+      const stats = fs.statSync(filePath);
+      if (stats.size < this.maxFileBytes) {
+        return false;
+      }
+      fs.renameSync(filePath, this.rotatedName(filePath));
+      fs.writeFileSync(filePath, "");
+      this.pruneExpired();
+      return true;
+    } catch {
+      // Missing file or a rotation race — the append below recreates it.
+      return false;
+    }
+  }
+
+  pruneExpired() {
+    // Retention is enforced on ROTATED segments only; the live files always
+    // keep the most recent window. Anything rotated out and older than
+    // retentionDays is deleted.
+    const cutoff = Date.now() - this.retentionDays * 24 * 60 * 60 * 1000;
+    let removed = 0;
+    let entries;
+    try {
+      entries = fs.readdirSync(this.rootDir);
+    } catch {
+      return 0;
+    }
+    for (const name of entries) {
+      if (!name.endsWith(".rotated.jsonl")) {
+        continue;
+      }
+      const full = path.join(this.rootDir, name);
+      try {
+        if (fs.statSync(full).mtimeMs < cutoff) {
+          fs.rmSync(full, { force: true });
+          removed += 1;
+        }
+      } catch {
+        // File vanished between readdir and stat — nothing to prune.
+      }
+    }
+    return removed;
+  }
+
+  enqueue(filePath, line) {
+    if (!this.pending.has(filePath)) {
+      this.pending.set(filePath, []);
+    }
+    this.pending.get(filePath).push(line);
+    this.scheduleFlush();
+  }
+
+  scheduleFlush() {
+    if (this.flushScheduled) {
+      return;
+    }
+    this.flushScheduled = true;
+    const timer = setTimeout(() => {
+      this.flushScheduled = false;
+      this.flush().catch((error) => {
+        console.error("JsonlLogStore flush failed:", error);
+      });
+    }, 20);
+    timer.unref?.();
+  }
+
+  drainPending() {
+    const batches = [];
+    for (const [filePath, lines] of this.pending) {
+      if (lines.length > 0) {
+        batches.push([filePath, lines.join("")]);
+      }
+    }
+    this.pending.clear();
+    return batches;
+  }
+
+  flush() {
+    // Serialize all disk writes on one chain so lines never interleave, while
+    // callers (request handlers) never wait on this unless they opt in.
+    this.writeChain = this.writeChain.then(async () => {
+      for (const [filePath, chunk] of this.drainPending()) {
+        this.rotateIfNeeded(filePath);
+        await fs.promises.appendFile(filePath, chunk);
+      }
+    });
+    return this.writeChain;
+  }
+
+  flushSync() {
+    // Crash/shutdown path: drain whatever is buffered with blocking writes so
+    // the final events (uncaught exception, shutdown) reach disk.
+    for (const [filePath, chunk] of this.drainPending()) {
+      this.rotateIfNeeded(filePath);
+      fs.appendFileSync(filePath, chunk);
     }
   }
 
@@ -250,8 +367,8 @@ export class JsonlLogStore {
     };
 
     const line = safeJsonLine(record);
-    fs.appendFileSync(this.fileFor(logType), line);
-    fs.appendFileSync(path.join(this.rootDir, "all.jsonl"), line);
+    this.enqueue(this.fileFor(logType), line);
+    this.enqueue(path.join(this.rootDir, "all.jsonl"), line);
     return record;
   }
 

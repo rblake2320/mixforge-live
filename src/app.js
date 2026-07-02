@@ -79,6 +79,15 @@ function subscriptionIsActive(subscription) {
   return ["active", "trialing"].includes(subscription?.status);
 }
 
+function subscriptionPeriodEnd(subscription) {
+  // Stripe API versions from 2025 onward report current_period_end on the
+  // subscription ITEM, not the subscription object. Read both so renewal
+  // dates survive an API-version upgrade instead of silently going null.
+  const seconds =
+    subscription?.current_period_end ?? subscription?.items?.data?.[0]?.current_period_end;
+  return unixToIso(seconds);
+}
+
 function applyStripeCheckoutSession(store, session) {
   const userId = session.client_reference_id || session.metadata?.userId;
   if (!userId) {
@@ -110,7 +119,7 @@ function applyStripeSubscription(store, cfg, subscription) {
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscription.id || user.stripeSubscriptionId || null,
     stripeSubscriptionStatus: subscription.status || null,
-    currentPeriodEnd: unixToIso(subscription.current_period_end)
+    currentPeriodEnd: subscriptionPeriodEnd(subscription)
   });
 }
 
@@ -326,7 +335,24 @@ export function createApp(overrides = {}) {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          // The frontend is a no-build single file with an inline <script> and
+          // inline event handlers, so script-src needs 'unsafe-inline'. This
+          // still blocks loading script from any other origin.
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrcAttr: ["'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com"],
+          imgSrc: ["'self'", "data:", "https://user-gen-media-assets.s3.amazonaws.com"],
+          mediaSrc: ["'self'", "blob:"],
+          connectSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'self'"]
+        }
+      },
       crossOriginEmbedderPolicy: false
     })
   );
@@ -572,17 +598,29 @@ export function createApp(overrides = {}) {
   const requiredUser = attachUser(store, cfg.jwtSecret, true);
 
   app.get("/api/health", (_req, res) => {
+    // A liveness probe that can never fail can never detect a wedged process.
+    // Verify the two things every request depends on: the JSON store answers
+    // queries and log storage accepts writes.
+    let storeOk = false;
+    try {
+      storeOk = Array.isArray(store.list("beats"));
+    } catch {
+      storeOk = false;
+    }
+    const logging = logStore.health();
+    const ok = storeOk && logging.ok;
     _req.log?.("health_check_heartbeat", {
       eventType: "health_check_requested",
-      severity: "INFO",
-      outcome: "success",
-      what: { endpoint: "/api/health" }
+      severity: ok ? "INFO" : "ERROR",
+      outcome: ok ? "success" : "failure",
+      what: { endpoint: "/api/health", storeOk, loggingOk: logging.ok }
     });
-    res.json({
-      ok: true,
+    res.status(ok ? 200 : 503).json({
+      ok,
       service: "mixforge-backend",
       version: "0.1.0",
       storage: "local-json",
+      checks: { store: storeOk, logging: logging.ok },
       dataRoot: cfg.dataRoot,
       logRoot: cfg.logRoot,
       timestamp: now()
