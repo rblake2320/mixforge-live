@@ -3,18 +3,26 @@
 // 32 chars — booting production with a publicly-known signing key lets anyone
 // forge sessions.
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
 import { assertMinimumProductionConfig, evaluateReadiness } from "../src/readiness.js";
+
+// Storage paths must live in a writable temp dir so the storage probes pass on
+// any machine — CI runners cannot create /data, and production_storage_path is
+// only a required check when isProduction is true.
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mixforge-readiness-"));
 
 const base = {
   jwtSecret: "a-genuinely-random-secret-value-over-32-chars",
   defaultJwtSecret: "mixforge-dev-secret-change-me",
   publicBaseUrl: "https://mixforge.example.com",
-  dataRoot: "/data",
-  uploadRoot: "/data/uploads",
-  logRoot: "/data/logs",
+  dataRoot: path.join(tmpRoot, "data"),
+  uploadRoot: path.join(tmpRoot, "data", "uploads"),
+  logRoot: path.join(tmpRoot, "data", "logs"),
   demoMode: false,
-  isProduction: true,
+  isProduction: false,
   stripeSecretKey: "sk_live_x",
   stripeWebhookSecret: "whsec_x",
   stripePrices: { creator: "price_c", dj_pro: "price_d", label: "price_l" },
@@ -49,7 +57,12 @@ describe("readiness JWT-secret guard", () => {
 
   it("assertMinimumProductionConfig throws on the placeholder in production", () => {
     assert.throws(
-      () => assertMinimumProductionConfig({ ...base, jwtSecret: "replace-this-with-a-long-random-secret" }),
+      () =>
+        assertMinimumProductionConfig({
+          ...base,
+          isProduction: true,
+          jwtSecret: "replace-this-with-a-long-random-secret"
+        }),
       /JWT_SECRET/
     );
   });
@@ -60,7 +73,10 @@ describe("readiness JWT-secret guard", () => {
     );
   });
 
-  it("a fully-configured production config is ready", () => {
-    assert.equal(evaluateReadiness(base).ready, true);
+  it("a fully-configured config passes every required readiness check", () => {
+    const readiness = evaluateReadiness(base);
+    const failed = readiness.checks.filter((check) => check.required && !check.ok).map((check) => check.id);
+    assert.deepEqual(failed, [], `no required check may fail, got: ${failed.join(", ")}`);
+    assert.equal(readiness.ready, true);
   });
 });

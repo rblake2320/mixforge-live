@@ -295,6 +295,9 @@ export class JsonlLogStore {
     // callers (request handlers) never wait on this unless they opt in.
     this.writeChain = this.writeChain.then(async () => {
       for (const [filePath, chunk] of this.drainPending()) {
+        // Self-heal a vanished log directory (same recovery the health probe
+        // uses) so buffered lines are not lost to a transient ENOENT.
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
         this.rotateIfNeeded(filePath);
         await fs.promises.appendFile(filePath, chunk);
       }
@@ -306,6 +309,7 @@ export class JsonlLogStore {
     // Crash/shutdown path: drain whatever is buffered with blocking writes so
     // the final events (uncaught exception, shutdown) reach disk.
     for (const [filePath, chunk] of this.drainPending()) {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
       this.rotateIfNeeded(filePath);
       fs.appendFileSync(filePath, chunk);
     }
