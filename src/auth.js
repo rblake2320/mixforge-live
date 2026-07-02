@@ -22,7 +22,7 @@ export function signToken(user, jwtSecret) {
 }
 
 export function attachUser(store, jwtSecret, required = false) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const header = req.get("authorization") || "";
     const match = header.match(/^Bearer\s+(.+)$/i);
 
@@ -48,7 +48,7 @@ export function attachUser(store, jwtSecret, required = false) {
 
     try {
       const payload = jwt.verify(match[1], jwtSecret);
-      const user = store.find("users", (candidate) => candidate.id === payload.sub);
+      const user = await store.findById("users", payload.sub);
       if (!user) {
         req.log?.("authentication", {
           eventType: "session_user_not_found",

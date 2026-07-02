@@ -4,14 +4,16 @@ import path from "node:path";
 import bcrypt from "bcryptjs";
 import cors from "cors";
 import express from "express";
-import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import multer from "multer";
 import Stripe from "stripe";
 import { StemSplit, webhooks as stemsplitWebhooks } from "@stemsplit/sdk";
 import { attachUser, signToken, toPublicUser } from "./auth.js";
 import { config as defaultConfig } from "./config.js";
-import { JsonStore, now } from "./db.js";
+import { now } from "./db.js";
+import { createStore } from "./store-factory.js";
+import { buildLimiter, createRateLimitBackend } from "./rate-limit.js";
+import { createStorage } from "./storage.js";
 import {
   JsonlLogStore,
   LOG_TYPES,
@@ -56,6 +58,18 @@ function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
+// Opaque, single-use tokens for email verification and password reset.
+function secureToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function isoAfter(ms) {
+  return new Date(Date.now() + ms).toISOString();
+}
+
+const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
 function planIdFromStripePrice(cfg, priceId) {
   if (!priceId) {
     return "";
@@ -88,7 +102,7 @@ function subscriptionPeriodEnd(subscription) {
   return unixToIso(seconds);
 }
 
-function applyStripeCheckoutSession(store, session) {
+async function applyStripeCheckoutSession(store, session) {
   const userId = session.client_reference_id || session.metadata?.userId;
   if (!userId) {
     return null;
@@ -103,13 +117,13 @@ function applyStripeCheckoutSession(store, session) {
   });
 }
 
-function applyStripeSubscription(store, cfg, subscription) {
+async function applyStripeSubscription(store, cfg, subscription) {
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
   if (!customerId) {
     return null;
   }
 
-  const user = store.find("users", (candidate) => candidate.stripeCustomerId === customerId);
+  const user = await store.findBy("users", "stripeCustomerId", customerId);
   if (!user) {
     return null;
   }
@@ -123,7 +137,7 @@ function applyStripeSubscription(store, cfg, subscription) {
   });
 }
 
-function applyStripeEvent(store, cfg, event) {
+async function applyStripeEvent(store, cfg, event) {
   const object = event.data?.object;
   switch (event.type) {
     case "checkout.session.completed":
@@ -298,7 +312,7 @@ function stemJobGetCall(client, kind, providerJobId) {
   return client.jobs.get(providerJobId);
 }
 
-function refreshDemoStemJob(store, job) {
+async function refreshDemoStemJob(store, job) {
   if (!job || job.provider !== "demo" || job.status === "completed" || job.status === "failed") {
     return job;
   }
@@ -395,7 +409,8 @@ export function createApp(overrides = {}) {
   fs.mkdirSync(recordingUploadDir, { recursive: true });
   fs.mkdirSync(stemUploadDir, { recursive: true });
 
-  const store = overrides.store || new JsonStore(cfg.dataFile);
+  const store = overrides.store || createStore(cfg);
+  const storage = overrides.storage || createStorage(cfg);
   const logStore =
     overrides.logStore ||
     new JsonlLogStore({
@@ -406,6 +421,8 @@ export function createApp(overrides = {}) {
     });
   const app = express();
   app.locals.store = store;
+  app.locals.storage = storage;
+  app.locals.storeReady = Promise.resolve(store.init?.());
   app.locals.config = cfg;
   app.locals.logStore = logStore;
   app.set("trust proxy", cfg.isProduction ? 1 : false);
@@ -474,7 +491,7 @@ export function createApp(overrides = {}) {
   app.post(
     "/api/billing/webhook",
     express.raw({ type: "application/json" }),
-    (req, res) => {
+    async (req, res) => {
       if (!cfg.stripeSecretKey || !cfg.stripeWebhookSecret) {
         req.log?.("security_threat", {
           eventType: "stripe_webhook_unconfigured",
@@ -500,7 +517,7 @@ export function createApp(overrides = {}) {
         return res.status(400).json({ error: error.message });
       }
 
-      store.insert("payments", {
+      await store.insert("payments", {
         id: crypto.randomUUID(),
         provider: "stripe",
         eventType: event.type,
@@ -508,7 +525,7 @@ export function createApp(overrides = {}) {
         objectId: event.data?.object?.id || null,
         createdAt: now()
       });
-      const updatedUser = applyStripeEvent(store, cfg, event);
+      const updatedUser = await applyStripeEvent(store, cfg, event);
       req.log?.("dependency_external", {
         eventType: "stripe_webhook_received",
         severity: "INFO",
@@ -538,7 +555,7 @@ export function createApp(overrides = {}) {
   app.post(
     "/api/stems/webhook",
     express.raw({ type: "*/*" }),
-    (req, res) => {
+    async (req, res) => {
       if (!cfg.stemsplitWebhookSecret) {
         req.log?.("security_threat", {
           eventType: "stemsplit_webhook_unconfigured",
@@ -566,7 +583,7 @@ export function createApp(overrides = {}) {
           return res.json({ received: true, ignored: true });
         }
 
-        const localJob = store.find("stemJobs", (candidate) => candidate.providerJobId === providerJobId);
+        const localJob = await store.findBy("stemJobs", "providerJobId", providerJobId);
         if (!localJob) {
           req.log?.("dependency_external", {
             eventType: "stemsplit_webhook_unmatched_job",
@@ -579,7 +596,7 @@ export function createApp(overrides = {}) {
 
         const eventName = event.event || "";
         if (eventName === "job.completed") {
-          store.update("stemJobs", localJob.id, {
+          await store.update("stemJobs", localJob.id, {
             status: "completed",
             progress: 100,
             completedAt: now(),
@@ -593,7 +610,7 @@ export function createApp(overrides = {}) {
             what: { jobId: localJob.id, providerJobId }
           });
         } else if (eventName === "job.failed" || eventName === "job.expired") {
-          store.update("stemJobs", localJob.id, {
+          await store.update("stemJobs", localJob.id, {
             status: "failed",
             errorMessage: event.data?.errorMessage || eventName
           });
@@ -628,49 +645,56 @@ export function createApp(overrides = {}) {
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
+
+  const rateLimitBackend = overrides.rateLimitBackend || createRateLimitBackend(cfg);
+  app.locals.rateLimitBackend = rateLimitBackend;
+  const authWindowMs = 15 * 60 * 1000;
+  const authLimit = 40;
+  const writeWindowMs = 60 * 1000;
+  const writeLimit = 30;
   app.use(
     "/api/auth",
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 40,
-      standardHeaders: true,
-      legacyHeaders: false,
+    buildLimiter({
+      windowMs: authWindowMs,
+      limit: authLimit,
+      prefix: "auth",
+      backend: rateLimitBackend,
       handler(req, res) {
         req.log?.("rate_limiting_throttle", {
           eventType: "rate_limit_exceeded_auth",
           severity: "WARN",
           outcome: "denied",
-          what: { limit: 40, windowMs: 15 * 60 * 1000 }
+          what: { limit: authLimit, windowMs: authWindowMs }
         });
         req.log?.("security_threat", {
           eventType: "possible_auth_bruteforce_rate_limit",
           severity: "WARN",
           outcome: "denied",
-          what: { limit: 40, windowMs: 15 * 60 * 1000 }
+          what: { limit: authLimit, windowMs: authWindowMs }
         });
         res.status(429).json({ error: "Too many authentication attempts. Try again later." });
       }
     })
   );
   app.use(
-    ["/api/recordings", "/api/stems/jobs", "/api/billing/checkout"],
-    rateLimit({
-      windowMs: 60 * 1000,
-      limit: 30,
-      standardHeaders: true,
-      legacyHeaders: false,
+    ["/api/recordings", "/api/stems/jobs", "/api/billing/checkout", "/api/reports", "/api/dmca"],
+    buildLimiter({
+      windowMs: writeWindowMs,
+      limit: writeLimit,
+      prefix: "write",
+      backend: rateLimitBackend,
       handler(req, res) {
         req.log?.("rate_limiting_throttle", {
           eventType: "rate_limit_exceeded_write_api",
           severity: "WARN",
           outcome: "denied",
-          what: { limit: 30, windowMs: 60 * 1000 }
+          what: { limit: writeLimit, windowMs: writeWindowMs }
         });
         req.log?.("security_threat", {
           eventType: "write_api_abuse_rate_limit",
           severity: "WARN",
           outcome: "denied",
-          what: { limit: 30, windowMs: 60 * 1000 }
+          what: { limit: writeLimit, windowMs: writeWindowMs }
         });
         res.status(429).json({ error: "Too many write requests. Try again shortly." });
       }
@@ -699,13 +723,13 @@ export function createApp(overrides = {}) {
   const optionalUser = attachUser(store, cfg.jwtSecret, false);
   const requiredUser = attachUser(store, cfg.jwtSecret, true);
 
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
     // A liveness probe that can never fail can never detect a wedged process.
-    // Verify the two things every request depends on: the JSON store answers
-    // queries and log storage accepts writes.
+    // Verify the two things every request depends on: the store answers queries
+    // and log storage accepts writes.
     let storeOk = false;
     try {
-      storeOk = Array.isArray(store.list("beats"));
+      storeOk = Array.isArray(await store.list("beats"));
     } catch {
       storeOk = false;
     }
@@ -809,7 +833,7 @@ export function createApp(overrides = {}) {
         });
         return res.status(400).json({ error: "Password must be at least 6 characters." });
       }
-      if (store.find("users", (user) => user.email === email)) {
+      if (await store.findBy("users", "email", email)) {
         req.log?.("authentication", {
           eventType: "signup_duplicate_email",
           severity: "WARN",
@@ -825,6 +849,7 @@ export function createApp(overrides = {}) {
         name,
         passwordHash: await bcrypt.hash(password, 12),
         planId: "free",
+        emailVerified: false,
         stripeCustomerId: null,
         stripeSubscriptionId: null,
         stripeSubscriptionStatus: null,
@@ -833,7 +858,20 @@ export function createApp(overrides = {}) {
         updatedAt: now()
       };
 
-      store.insert("users", user);
+      await store.insert("users", user);
+
+      // Issue an email-verification token. Delivery is by email in production;
+      // demo mode returns the token so the flow is fully exercisable locally.
+      const verification = {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        token: secureToken(),
+        expiresAt: isoAfter(VERIFY_TOKEN_TTL_MS),
+        verifiedAt: null,
+        createdAt: now()
+      };
+      await store.insert("emailVerifications", verification);
+
       req.log?.("audit", {
         eventType: "user_account_created",
         severity: "INFO",
@@ -856,7 +894,8 @@ export function createApp(overrides = {}) {
       });
       return res.status(201).json({
         user: toPublicUser(user),
-        token: signToken(user, cfg.jwtSecret)
+        token: signToken(user, cfg.jwtSecret),
+        ...(cfg.demoMode ? { verificationToken: verification.token } : {})
       });
     } catch (error) {
       return next(error);
@@ -876,7 +915,7 @@ export function createApp(overrides = {}) {
       }
       const email = normalizeEmail(req.body.email);
       const password = req.body.password;
-      const user = store.find("users", (candidate) => candidate.email === email);
+      const user = await store.findBy("users", "email", email);
 
       if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
         req.log?.("authentication", {
@@ -916,6 +955,111 @@ export function createApp(overrides = {}) {
     }
   });
 
+  app.post("/api/auth/verify-email", async (req, res, next) => {
+    try {
+      const token = typeof req.body.token === "string" ? req.body.token.trim() : "";
+      const record = token ? await store.findBy("emailVerifications", "token", token) : null;
+      if (!record || record.verifiedAt || Date.parse(record.expiresAt) < Date.now()) {
+        req.log?.("security_threat", {
+          eventType: "email_verification_invalid_token",
+          severity: "WARN",
+          outcome: "failure",
+          what: { hasToken: Boolean(token) }
+        });
+        return res.status(400).json({ error: "Invalid or expired verification token." });
+      }
+      await store.update("emailVerifications", record.id, { verifiedAt: now() });
+      await store.update("users", record.userId, { emailVerified: true });
+      req.log?.("audit", {
+        eventType: "email_verified",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: record.userId, userEmailHash: null, authenticated: false },
+        what: { userId: record.userId }
+      });
+      return res.json({ verified: true });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res, next) => {
+    try {
+      const email = normalizeEmail(req.body.email);
+      const user = email ? await store.findBy("users", "email", email) : null;
+      // Always respond 200 with the same body so the endpoint never reveals
+      // whether an account exists (prevents account enumeration).
+      const response = { ok: true, message: "If that email has an account, a reset link is on its way." };
+      if (user) {
+        const reset = {
+          id: crypto.randomUUID(),
+          userId: user.id,
+          token: secureToken(),
+          expiresAt: isoAfter(RESET_TOKEN_TTL_MS),
+          usedAt: null,
+          createdAt: now()
+        };
+        await store.insert("passwordResets", reset);
+        req.log?.("audit", {
+          eventType: "password_reset_requested",
+          severity: "INFO",
+          outcome: "success",
+          actor: { userId: user.id, userEmailHash: hashIdentifier(email), authenticated: false },
+          what: { userId: user.id }
+        });
+        if (cfg.demoMode) {
+          response.resetToken = reset.token;
+        }
+      } else {
+        req.log?.("authentication", {
+          eventType: "password_reset_requested_unknown_email",
+          severity: "INFO",
+          outcome: "deferred",
+          actor: { userId: null, userEmailHash: hashIdentifier(email), authenticated: false }
+        });
+      }
+      return res.json(response);
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res, next) => {
+    try {
+      const token = typeof req.body.token === "string" ? req.body.token.trim() : "";
+      const password = req.body.password;
+      if (typeof password !== "string" || password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters." });
+      }
+      const record = token ? await store.findBy("passwordResets", "token", token) : null;
+      if (!record || record.usedAt || Date.parse(record.expiresAt) < Date.now()) {
+        req.log?.("security_threat", {
+          eventType: "password_reset_invalid_token",
+          severity: "WARN",
+          outcome: "failure",
+          what: { hasToken: Boolean(token) }
+        });
+        return res.status(400).json({ error: "Invalid or expired reset token." });
+      }
+      const user = await store.findById("users", record.userId);
+      if (!user) {
+        return res.status(400).json({ error: "Invalid or expired reset token." });
+      }
+      await store.update("users", user.id, { passwordHash: await bcrypt.hash(password, 12) });
+      await store.update("passwordResets", record.id, { usedAt: now() });
+      req.log?.("audit", {
+        eventType: "password_reset_completed",
+        severity: "INFO",
+        outcome: "success",
+        actor: { userId: user.id, userEmailHash: hashIdentifier(user.email), authenticated: false },
+        what: { userId: user.id }
+      });
+      return res.json({ ok: true });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   app.get("/api/me", requiredUser, (req, res) => {
     req.log?.("audit", {
       eventType: "sensitive_user_profile_read",
@@ -932,15 +1076,24 @@ export function createApp(overrides = {}) {
     res.json({ user: toPublicUser(req.user) });
   });
 
-  app.get("/api/beats", (_req, res) => {
-    res.json({ beats: store.list("beats") });
+  app.get("/api/beats", async (_req, res, next) => {
+    try {
+      res.json({ beats: await store.list("beats") });
+    } catch (error) {
+      next(error);
+    }
   });
 
-  app.get("/api/community", (_req, res) => {
-    res.json({ tracks: store.list("community") });
+  app.get("/api/community", async (_req, res, next) => {
+    try {
+      res.json({ tracks: await store.list("community") });
+    } catch (error) {
+      next(error);
+    }
   });
 
-  app.post("/api/recordings", optionalUser, recordingUpload.single("audio"), (req, res) => {
+  app.post("/api/recordings", optionalUser, recordingUpload.single("audio"), async (req, res, next) => {
+   try {
     if (!req.file) {
       req.log?.("security_threat", {
         eventType: "input_validation_failed_recording_missing_audio",
@@ -951,7 +1104,7 @@ export function createApp(overrides = {}) {
       return res.status(400).json({ error: "Upload an audio file in the 'audio' form field." });
     }
 
-    const activeBeat = store.find("beats", (beat) => beat.id === req.body.beatId);
+    const activeBeat = req.body.beatId ? await store.findById("beats", req.body.beatId) : null;
     const recording = {
       id: crypto.randomUUID(),
       userId: req.user ? req.user.id : null,
@@ -963,11 +1116,12 @@ export function createApp(overrides = {}) {
       sizeBytes: req.file.size,
       durationSeconds: Number(req.body.durationSeconds || 0),
       filePath: path.relative(cfg.uploadRoot, req.file.path).replaceAll("\\", "/"),
+      moderationStatus: "active",
       createdAt: now(),
       updatedAt: now()
     };
 
-    store.insert("recordings", recording);
+    await store.insert("recordings", recording);
     req.log?.("audit", {
       eventType: "recording_uploaded",
       severity: "INFO",
@@ -986,25 +1140,30 @@ export function createApp(overrides = {}) {
       what: { recordingId: recording.id, beatId: recording.beatId, durationSeconds: recording.durationSeconds }
     });
     return res.status(201).json({ recording: publicRecording(recording) });
+   } catch (error) {
+     return next(error);
+   }
   });
 
-  app.get("/api/recordings", optionalUser, (req, res) => {
-    const recordings = store
-      .list("recordings")
-      .filter((recording) => !req.user || recording.userId === req.user.id || recording.userId === null)
-      .map(publicRecording);
-    req.log?.("data_access_query", {
-      eventType: "recordings_list_read",
-      severity: "INFO",
-      outcome: "success",
-      what: { collection: "recordings", count: recordings.length }
-    });
-    res.json({ recordings });
-  });
-
-  app.get("/api/recordings/:id/audio", optionalUser, (req, res, next) => {
+  app.get("/api/recordings", optionalUser, async (req, res, next) => {
     try {
-      const recording = store.find("recordings", (candidate) => candidate.id === req.params.id);
+      const rows = req.user ? await store.listByOwner("recordings", req.user.id) : await store.list("recordings");
+      const recordings = rows.map(publicRecording);
+      req.log?.("data_access_query", {
+        eventType: "recordings_list_read",
+        severity: "INFO",
+        outcome: "success",
+        what: { collection: "recordings", count: recordings.length }
+      });
+      res.json({ recordings });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/recordings/:id/audio", optionalUser, async (req, res, next) => {
+    try {
+      const recording = await store.findById("recordings", req.params.id);
       if (!recording) {
         req.log?.("access_authorization", {
           eventType: "recording_audio_missing",
@@ -1013,6 +1172,15 @@ export function createApp(overrides = {}) {
           what: { recordingId: req.params.id }
         });
         return res.status(404).json({ error: "Recording not found." });
+      }
+      if (recording.moderationStatus === "removed") {
+        req.log?.("audit", {
+          eventType: "moderated_recording_audio_blocked",
+          severity: "WARN",
+          outcome: "denied",
+          what: { recordingId: recording.id, moderationStatus: recording.moderationStatus }
+        });
+        return res.status(410).json({ error: "This content was removed by moderation." });
       }
       if (!canAccessOwnedRecord(recording, req.user)) {
         req.log?.("access_authorization", {
@@ -1029,7 +1197,6 @@ export function createApp(overrides = {}) {
         });
         return res.status(403).json({ error: "Recording access denied." });
       }
-      const fullPath = ensureInside(cfg.uploadRoot, recording.filePath);
       req.log?.("audit", {
         eventType: "sensitive_recording_audio_read",
         severity: "INFO",
@@ -1040,19 +1207,17 @@ export function createApp(overrides = {}) {
         eventType: "recording_audio_file_read",
         severity: "INFO",
         outcome: "success",
-        what: { collection: "recordings", recordingId: recording.id }
+        what: { collection: "recordings", recordingId: recording.id, storage: storage.kind }
       });
-      res.type(recording.mimeType);
-      return res.sendFile(fullPath);
+      return storage.serve(res, recording);
     } catch (error) {
       return next(error);
     }
   });
 
-  app.post("/api/projects", optionalUser, (req, res) => {
-    const recording = req.body.recordingId
-      ? store.find("recordings", (candidate) => candidate.id === req.body.recordingId)
-      : null;
+  app.post("/api/projects", optionalUser, async (req, res, next) => {
+   try {
+    const recording = req.body.recordingId ? await store.findById("recordings", req.body.recordingId) : null;
     if (recording && !canAccessOwnedRecord(recording, req.user)) {
       req.log?.("access_authorization", {
         eventType: "project_recording_attach_denied",
@@ -1082,7 +1247,7 @@ export function createApp(overrides = {}) {
       updatedAt: now()
     };
 
-    store.insert("projects", project);
+    await store.insert("projects", project);
     req.log?.("audit", {
       eventType: "project_created",
       severity: "INFO",
@@ -1096,25 +1261,29 @@ export function createApp(overrides = {}) {
       what: { projectId: project.id, mode: project.mode }
     });
     return res.status(201).json({ project });
+   } catch (error) {
+     return next(error);
+   }
   });
 
-  app.get("/api/projects", optionalUser, (req, res) => {
-    const projects = store
-      .list("projects")
-      .filter((project) => !req.user || project.userId === req.user.id || project.userId === null);
-    req.log?.("data_access_query", {
-      eventType: "projects_list_read",
-      severity: "INFO",
-      outcome: "success",
-      what: { collection: "projects", count: projects.length }
-    });
-    res.json({ projects });
+  app.get("/api/projects", optionalUser, async (req, res, next) => {
+    try {
+      const projects = req.user ? await store.listByOwner("projects", req.user.id) : await store.list("projects");
+      req.log?.("data_access_query", {
+        eventType: "projects_list_read",
+        severity: "INFO",
+        outcome: "success",
+        what: { collection: "projects", count: projects.length }
+      });
+      res.json({ projects });
+    } catch (error) {
+      next(error);
+    }
   });
 
-  app.post("/api/stems/jobs", optionalUser, stemUpload.single("track"), (req, res) => {
-    const recording = req.body.recordingId
-      ? store.find("recordings", (candidate) => candidate.id === req.body.recordingId)
-      : null;
+  app.post("/api/stems/jobs", optionalUser, stemUpload.single("track"), async (req, res, next) => {
+   try {
+    const recording = req.body.recordingId ? await store.findById("recordings", req.body.recordingId) : null;
 
     // A link (YouTube / SoundCloud / direct audio URL) is a third source type
     // alongside an uploaded file and a saved recording. When present it wins,
@@ -1217,7 +1386,7 @@ export function createApp(overrides = {}) {
       completeAfter: cfg.stemsplitApiKey ? null : new Date(Date.now() + 1800).toISOString()
     };
 
-    store.insert("stemJobs", job);
+    await store.insert("stemJobs", job);
     req.log?.("audit", {
       eventType: "stem_job_created",
       severity: "INFO",
@@ -1246,56 +1415,59 @@ export function createApp(overrides = {}) {
     }
 
     const client = stemsplitClient(cfg);
-    return timedDependency(req, "stemsplit", `${sourceKind}.create`, () =>
-      stemJobCreateCall(client, sourceKind, {
-        sourcePath,
-        sourceUrl,
-        metadata: {
-          mixforgeJobId: job.id,
-          userId: job.userId,
-          sourceName: job.sourceName
-        }
-      })
-    )
-      .then((rawRemote) => {
-        const remote = normalizeRemoteJob(rawRemote);
-        const updated = store.update("stemJobs", job.id, {
-          providerJobId: remote.id,
-          status: mapStemSplitStatus(remote.status),
-          progress: remote.progress ?? 10,
-          stems: publicStemOutputs(remote.outputs),
-          externalCreatedAt: remote.createdAt || null
-        });
-        req.log?.("transaction_business", {
-          eventType: "stemsplit_job_submitted",
-          severity: "INFO",
-          outcome: "success",
-          what: { jobId: job.id, providerJobId: remote.id, providerStatus: remote.status, sourceKind }
-        });
-        return res.status(202).json({ job: publicStemJob(updated) });
-      })
-      .catch((error) => {
-        const failed = store.update("stemJobs", job.id, {
-          status: "failed",
-          errorMessage: error.message
-        });
-        req.log?.("error", {
-          eventType: "stemsplit_job_create_failed",
-          severity: "ERROR",
-          outcome: "failure",
-          what: { jobId: job.id, provider: "stemsplit" },
-          error
-        });
-        return res.status(502).json({
-          error: "StemSplit job creation failed.",
-          detail: error.message,
-          job: publicStemJob(failed)
-        });
+    try {
+      const rawRemote = await timedDependency(req, "stemsplit", `${sourceKind}.create`, () =>
+        stemJobCreateCall(client, sourceKind, {
+          sourcePath,
+          sourceUrl,
+          metadata: {
+            mixforgeJobId: job.id,
+            userId: job.userId,
+            sourceName: job.sourceName
+          }
+        })
+      );
+      const remote = normalizeRemoteJob(rawRemote);
+      const updated = await store.update("stemJobs", job.id, {
+        providerJobId: remote.id,
+        status: mapStemSplitStatus(remote.status),
+        progress: remote.progress ?? 10,
+        stems: publicStemOutputs(remote.outputs),
+        externalCreatedAt: remote.createdAt || null
       });
+      req.log?.("transaction_business", {
+        eventType: "stemsplit_job_submitted",
+        severity: "INFO",
+        outcome: "success",
+        what: { jobId: job.id, providerJobId: remote.id, providerStatus: remote.status, sourceKind }
+      });
+      return res.status(202).json({ job: publicStemJob(updated) });
+    } catch (error) {
+      const failed = await store.update("stemJobs", job.id, {
+        status: "failed",
+        errorMessage: error.message
+      });
+      req.log?.("error", {
+        eventType: "stemsplit_job_create_failed",
+        severity: "ERROR",
+        outcome: "failure",
+        what: { jobId: job.id, provider: "stemsplit" },
+        error
+      });
+      return res.status(502).json({
+        error: "StemSplit job creation failed.",
+        detail: error.message,
+        job: publicStemJob(failed)
+      });
+    }
+   } catch (error) {
+     return next(error);
+   }
   });
 
   app.get("/api/stems/jobs/:id", optionalUser, async (req, res, next) => {
-    const job = store.find("stemJobs", (candidate) => candidate.id === req.params.id);
+   try {
+    const job = await store.findById("stemJobs", req.params.id);
     if (!job) {
       req.log?.("access_authorization", {
         eventType: "stem_job_missing",
@@ -1320,35 +1492,34 @@ export function createApp(overrides = {}) {
       });
       return res.status(403).json({ error: "Stem job access denied." });
     }
-    try {
-      const previousStatus = job.status;
-      const refreshed =
-        job.provider === "stemsplit"
-          ? await refreshStemSplitJob(store, cfg, job, req)
-          : job.provider === "demo"
-            ? refreshDemoStemJob(store, job)
-          : store.update("stemJobs", job.id, {
+    const previousStatus = job.status;
+    const refreshed =
+      job.provider === "stemsplit"
+        ? await refreshStemSplitJob(store, cfg, job, req)
+        : job.provider === "demo"
+          ? await refreshDemoStemJob(store, job)
+          : await store.update("stemJobs", job.id, {
               status: "failed",
               errorMessage: `Unsupported stem provider: ${job.provider || "unknown"}`
             });
-      req.log?.("data_access_query", {
-        eventType: "stem_job_read",
-        severity: "INFO",
-        outcome: "success",
-        what: { jobId: job.id, provider: job.provider, status: refreshed.status }
+    req.log?.("data_access_query", {
+      eventType: "stem_job_read",
+      severity: "INFO",
+      outcome: "success",
+      what: { jobId: job.id, provider: job.provider, status: refreshed.status }
+    });
+    if (previousStatus !== refreshed.status) {
+      req.log?.("transaction_business", {
+        eventType: "stem_job_status_changed",
+        severity: refreshed.status === "failed" ? "ERROR" : "INFO",
+        outcome: refreshed.status === "failed" ? "failure" : "success",
+        what: { jobId: job.id, provider: job.provider, from: previousStatus, to: refreshed.status }
       });
-      if (previousStatus !== refreshed.status) {
-        req.log?.("transaction_business", {
-          eventType: "stem_job_status_changed",
-          severity: refreshed.status === "failed" ? "ERROR" : "INFO",
-          outcome: refreshed.status === "failed" ? "failure" : "success",
-          what: { jobId: job.id, provider: job.provider, from: previousStatus, to: refreshed.status }
-        });
-      }
-      return res.json({ job: publicStemJob(refreshed) });
-    } catch (error) {
-      return next(error);
     }
+    return res.json({ job: publicStemJob(refreshed) });
+   } catch (error) {
+     return next(error);
+   }
   });
 
   app.get("/api/plans", (_req, res) => {
@@ -1371,7 +1542,7 @@ export function createApp(overrides = {}) {
 
       if (plan.id === "free") {
         if (req.user) {
-          store.update("users", req.user.id, { planId: "free" });
+          await store.update("users", req.user.id, { planId: "free" });
         }
         req.log?.("audit", {
           eventType: "free_plan_activated",
@@ -1460,7 +1631,7 @@ export function createApp(overrides = {}) {
           stripe.checkout.sessions.create(checkoutSession)
         );
 
-        store.insert("payments", {
+        await store.insert("payments", {
           id: crypto.randomUUID(),
           userId: req.user ? req.user.id : null,
           provider: "stripe",
@@ -1489,7 +1660,8 @@ export function createApp(overrides = {}) {
     }
   });
 
-  app.post("/api/contact", (req, res) => {
+  app.post("/api/contact", async (req, res, next) => {
+   try {
     const contact = {
       id: crypto.randomUUID(),
       name: String(req.body.name || "").slice(0, 120),
@@ -1497,7 +1669,7 @@ export function createApp(overrides = {}) {
       message: String(req.body.message || "").slice(0, 2000),
       createdAt: now()
     };
-    store.insert("contacts", contact);
+    await store.insert("contacts", contact);
     req.log?.("audit", {
       eventType: "contact_message_created",
       severity: "INFO",
@@ -1520,6 +1692,182 @@ export function createApp(overrides = {}) {
       what: { contactId: contact.id }
     });
     res.status(201).json({ contact });
+   } catch (error) {
+     return next(error);
+   }
+  });
+
+  // ---- Trust & Safety: reporting, DMCA, moderation, legal ----
+
+  function requireAdmin(req, res, next) {
+    if (!cfg.adminToken) {
+      return res.status(503).json({ error: "Moderation is not configured. Set MIXFORGE_ADMIN_TOKEN." });
+    }
+    const provided = req.get("x-admin-token") || "";
+    // Constant-time compare to avoid leaking the token via timing.
+    const a = Buffer.from(provided);
+    const b = Buffer.from(cfg.adminToken);
+    const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+    if (!ok) {
+      req.log?.("security_threat", {
+        eventType: "moderation_admin_auth_failed",
+        severity: "WARN",
+        outcome: "denied",
+        what: { path: req.path }
+      });
+      return res.status(401).json({ error: "Admin authorization required." });
+    }
+    return next();
+  }
+
+  const REPORT_TARGETS = new Set(["recording", "community", "user"]);
+
+  app.post("/api/reports", optionalUser, async (req, res, next) => {
+    try {
+      const targetType = String(req.body.targetType || "").trim();
+      const targetId = String(req.body.targetId || "").trim();
+      const reason = String(req.body.reason || "").trim().slice(0, 80);
+      const details = String(req.body.details || "").slice(0, 2000);
+      if (!REPORT_TARGETS.has(targetType) || !targetId || !reason) {
+        return res.status(400).json({ error: "targetType, targetId, and reason are required." });
+      }
+      const report = {
+        id: crypto.randomUUID(),
+        userId: req.user ? req.user.id : null,
+        targetType,
+        targetId,
+        reason,
+        details,
+        status: "open",
+        createdAt: now()
+      };
+      await store.insert("reports", report);
+      req.log?.("audit", {
+        eventType: "content_reported",
+        severity: "WARN",
+        outcome: "success",
+        actor: { userId: req.user?.id || null, userEmailHash: null, authenticated: Boolean(req.user) },
+        what: { reportId: report.id, targetType, targetId, reason }
+      });
+      return res.status(201).json({ report: { id: report.id, status: report.status } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.post("/api/dmca", async (req, res, next) => {
+    try {
+      const required = ["claimantName", "claimantEmail", "targetType", "targetId", "workDescription"];
+      for (const field of required) {
+        if (typeof req.body[field] !== "string" || !req.body[field].trim()) {
+          return res.status(400).json({ error: `Field '${field}' is required.` });
+        }
+      }
+      if (req.body.goodFaith !== true || typeof req.body.signature !== "string" || !req.body.signature.trim()) {
+        return res
+          .status(400)
+          .json({ error: "A good-faith statement (goodFaith: true) and an electronic signature are required." });
+      }
+      const takedown = {
+        id: crypto.randomUUID(),
+        claimantName: String(req.body.claimantName).slice(0, 160),
+        claimantEmail: normalizeEmail(req.body.claimantEmail),
+        targetType: String(req.body.targetType).trim(),
+        targetId: String(req.body.targetId).trim(),
+        workDescription: String(req.body.workDescription).slice(0, 4000),
+        signature: String(req.body.signature).slice(0, 160),
+        goodFaith: true,
+        status: "received",
+        createdAt: now()
+      };
+      // Auto-flag a targeted recording for review (reversible) pending human decision.
+      if (takedown.targetType === "recording") {
+        const target = await store.findById("recordings", takedown.targetId);
+        if (target && target.moderationStatus !== "removed") {
+          await store.update("recordings", target.id, { moderationStatus: "under_review" });
+        }
+      }
+      await store.insert("dmcaTakedowns", takedown);
+      req.log?.("audit", {
+        eventType: "dmca_takedown_received",
+        severity: "WARN",
+        outcome: "success",
+        actor: { userId: null, userEmailHash: hashIdentifier(takedown.claimantEmail), authenticated: false },
+        what: { takedownId: takedown.id, targetType: takedown.targetType, targetId: takedown.targetId }
+      });
+      return res.status(201).json({
+        takedown: { id: takedown.id, status: takedown.status },
+        message: "DMCA notice received. Targeted content is under review pending our designated agent's decision."
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.get("/api/legal/terms", (_req, res) => {
+    res.json({
+      updatedAt: "2026-07-01",
+      terms:
+        "By using MixForge you agree to upload or import only audio you own or are licensed to use. " +
+        "You are solely responsible for the rights to content you record, upload, or import by link.",
+      acceptableUse: [
+        "Do not upload or import content you do not have the rights to.",
+        "Do not use MixForge to infringe copyright or distribute unlicensed material.",
+        "Imported links are fetched by our stem provider on your behalf and are your responsibility."
+      ],
+      reportContact: "Report content via POST /api/reports or email abuse@mixforge.live."
+    });
+  });
+
+  app.get("/api/legal/dmca", (_req, res) => {
+    res.json({
+      policy:
+        "MixForge complies with the DMCA. Rights holders may submit a takedown notice; targeted content is placed " +
+        "under review and removed if the notice is valid. Repeat infringers are terminated.",
+      designatedAgentEmail: cfg.dmcaAgentEmail,
+      submit: "POST /api/dmca with claimantName, claimantEmail, targetType, targetId, workDescription, goodFaith:true, signature."
+    });
+  });
+
+  app.get("/api/moderation/reports", requireAdmin, async (_req, res, next) => {
+    try {
+      res.json({ reports: await store.list("reports") });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/api/moderation/dmca", requireAdmin, async (_req, res, next) => {
+    try {
+      res.json({ takedowns: await store.list("dmcaTakedowns") });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  const MODERATION_STATES = new Set(["active", "flagged", "under_review", "removed"]);
+
+  app.post("/api/moderation/recordings/:id/status", requireAdmin, async (req, res, next) => {
+    try {
+      const status = String(req.body.status || "").trim();
+      if (!MODERATION_STATES.has(status)) {
+        return res.status(400).json({ error: `status must be one of: ${[...MODERATION_STATES].join(", ")}` });
+      }
+      const recording = await store.findById("recordings", req.params.id);
+      if (!recording) {
+        return res.status(404).json({ error: "Recording not found." });
+      }
+      const updated = await store.update("recordings", recording.id, { moderationStatus: status });
+      req.log?.("audit", {
+        eventType: "recording_moderation_status_changed",
+        severity: status === "removed" ? "WARN" : "INFO",
+        outcome: "success",
+        what: { recordingId: recording.id, from: recording.moderationStatus, to: status }
+      });
+      return res.json({ recording: publicRecording(updated) });
+    } catch (error) {
+      return next(error);
+    }
   });
 
   app.use((req, res) => {

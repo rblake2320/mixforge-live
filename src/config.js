@@ -43,5 +43,17 @@ export const config = {
     label: process.env.STRIPE_PRICE_LABEL || ""
   },
   stemsplitApiKey: process.env.STEMSPLIT_API_KEY || "",
-  stemsplitWebhookSecret: process.env.STEMSPLIT_WEBHOOK_SECRET || ""
+  stemsplitWebhookSecret: process.env.STEMSPLIT_WEBHOOK_SECRET || "",
+  databaseUrl: process.env.DATABASE_URL || "",
+  storeBackend: process.env.MIXFORGE_STORE || "",
+  redisUrl: process.env.REDIS_URL || "",
+  adminToken: process.env.MIXFORGE_ADMIN_TOKEN || "",
+  dmcaAgentEmail: process.env.MIXFORGE_DMCA_AGENT_EMAIL || "dmca@mixforge.live",
+  storageBackend: process.env.MIXFORGE_STORAGE || "",
+  s3Bucket: process.env.S3_BUCKET || "",
+  s3Prefix: process.env.S3_PREFIX || "uploads",
+  s3Region: process.env.S3_REGION || process.env.AWS_REGION || "us-east-1",
+  s3Endpoint: process.env.S3_ENDPOINT || "",
+  s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || "",
+  s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || ""
 };

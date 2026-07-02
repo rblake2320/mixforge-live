@@ -5,6 +5,10 @@ import { assertMinimumProductionConfig } from "./readiness.js";
 assertMinimumProductionConfig(config);
 const app = createApp(config);
 
+// Ensure the store (Postgres schema/seed, or the flat-file load) is ready before
+// accepting traffic.
+await app.locals.storeReady;
+
 const server = app.listen(config.port, config.host, () => {
   app.locals.logStore?.log("system_infrastructure", {
     eventType: "server_listening",
@@ -26,7 +30,7 @@ function shutdown(signal = "unknown") {
     outcome: "deferred",
     what: { signal }
   });
-  server.close(() => {
+  server.close(async () => {
     app.locals.logStore?.log("system_infrastructure", {
       eventType: "server_shutdown_completed",
       severity: "INFO",
@@ -34,6 +38,8 @@ function shutdown(signal = "unknown") {
       what: { signal }
     });
     app.locals.logStore?.flushSync();
+    await app.locals.rateLimitBackend?.close?.();
+    await app.locals.store?.close?.();
     process.exit(0);
   });
 }

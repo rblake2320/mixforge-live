@@ -100,6 +100,24 @@ const seedCommunity = [
   }
 ];
 
+const COLLECTIONS = [
+  "users",
+  "beats",
+  "recordings",
+  "projects",
+  "stemJobs",
+  "payments",
+  "community",
+  "contacts",
+  "passwordResets",
+  "emailVerifications",
+  "reports",
+  "dmcaTakedowns"
+];
+
+// Collections that are always re-seeded from defaults when empty.
+const RESEED = { beats: seedBeats, community: seedCommunity };
+
 function defaultData() {
   return {
     meta: {
@@ -114,7 +132,11 @@ function defaultData() {
     stemJobs: [],
     payments: [],
     community: seedCommunity,
-    contacts: []
+    contacts: [],
+    passwordResets: [],
+    emailVerifications: [],
+    reports: [],
+    dmcaTakedowns: []
   };
 }
 
@@ -175,6 +197,26 @@ export class JsonStore {
     return this.list(collection).find(predicate);
   }
 
+  // ---- Backend-agnostic query interface (shared with PostgresStore) ----
+
+  // eslint-disable-next-line class-methods-use-this
+  async init() {
+    // JsonStore is ready synchronously in the constructor; nothing to await.
+  }
+
+  findById(collection, id) {
+    return this.list(collection).find((record) => record.id === id) || null;
+  }
+
+  findBy(collection, field, value) {
+    return this.list(collection).find((record) => record[field] === value) || null;
+  }
+
+  listByOwner(collection, userId) {
+    // Rows the user owns, plus anonymous (public) rows with no owner.
+    return this.list(collection).filter((record) => record.userId === userId || record.userId == null);
+  }
+
   insert(collection, record) {
     this.assertCollection(collection);
     this.data[collection].push(record);
@@ -193,6 +235,22 @@ export class JsonStore {
     return item;
   }
 
+  remove(collection, id) {
+    this.assertCollection(collection);
+    const before = this.data[collection].length;
+    this.data[collection] = this.data[collection].filter((record) => record.id !== id);
+    const removed = this.data[collection].length !== before;
+    if (removed) {
+      this.save();
+    }
+    return removed;
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  async close() {
+    // No open handles to release for the flat-file store.
+  }
+
   transaction(mutator) {
     const result = mutator(this.data);
     this.save();
@@ -206,4 +264,4 @@ export class JsonStore {
   }
 }
 
-export { now };
+export { now, seedBeats, seedCommunity, defaultData, COLLECTIONS, RESEED };

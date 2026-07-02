@@ -16,6 +16,8 @@
     "smoke:stemsplit": "node scripts/stemsplit-smoke.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1078.0",
+    "@aws-sdk/s3-request-presigner": "^3.1078.0",
     "@stemsplit/sdk": "^0.1.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -23,8 +25,11 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "pg": "^8.22.0",
+    "rate-limit-redis": "^5.0.0",
     "stripe": "^17.5.0"
   }
 }
