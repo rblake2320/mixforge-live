@@ -73,6 +73,31 @@ export function attachUser(store, jwtSecret, required = false) {
         });
         return res.status(401).json({ error: "Session user was not found." });
       }
+      // A password reset invalidates every session issued before it; otherwise
+      // a stolen token would keep working for its full 14-day lifetime after
+      // the owner recovered the account.
+      if (
+        user.passwordChangedAt &&
+        (payload.iat || 0) < Math.floor(Date.parse(user.passwordChangedAt) / 1000)
+      ) {
+        req.log?.("session", {
+          eventType: "session_revoked_password_changed",
+          severity: "WARN",
+          outcome: "denied",
+          actor: {
+            userId: user.id,
+            userEmailHash: hashIdentifier(user.email),
+            authenticated: false
+          }
+        });
+        req.log?.("security_threat", {
+          eventType: "stale_token_after_password_reset",
+          severity: "WARN",
+          outcome: "denied",
+          what: { userId: user.id }
+        });
+        return res.status(401).json({ error: "Session expired after a password change. Log in again." });
+      }
       req.user = user;
       req.log?.("authentication", {
         eventType: "session_token_validated",

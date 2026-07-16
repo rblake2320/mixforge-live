@@ -1050,7 +1050,11 @@ export function createApp(overrides = {}) {
       if (!user) {
         return res.status(400).json({ error: "Invalid or expired reset token." });
       }
-      await store.update("users", user.id, { passwordHash: await bcrypt.hash(password, 12) });
+      await store.update("users", user.id, {
+        passwordHash: await bcrypt.hash(password, 12),
+        // Recorded so attachUser can revoke every session issued before the reset.
+        passwordChangedAt: now()
+      });
       await store.update("passwordResets", record.id, { usedAt: now() });
       req.log?.("audit", {
         eventType: "password_reset_completed",
