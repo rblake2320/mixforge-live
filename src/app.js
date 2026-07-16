@@ -411,6 +411,11 @@ export function createApp(overrides = {}) {
 
   const store = overrides.store || createStore(cfg);
   const storage = overrides.storage || createStorage(cfg);
+  // One Stripe client per app, with an explicit network timeout and retries so
+  // a hung Stripe call can never hold a request open indefinitely.
+  const stripe = cfg.stripeSecretKey
+    ? new Stripe(cfg.stripeSecretKey, { timeout: 30_000, maxNetworkRetries: 2 })
+    : null;
   const logStore =
     overrides.logStore ||
     new JsonlLogStore({
@@ -502,7 +507,6 @@ export function createApp(overrides = {}) {
         return res.status(501).json({ error: "Stripe webhook is not configured." });
       }
 
-      const stripe = new Stripe(cfg.stripeSecretKey);
       let event;
       try {
         event = stripe.webhooks.constructEvent(req.body, req.get("stripe-signature"), cfg.stripeWebhookSecret);
@@ -1601,8 +1605,7 @@ export function createApp(overrides = {}) {
             "Configure STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and the Stripe price IDs to open real Checkout."
         });
       }
-      if (cfg.stripeSecretKey && priceId) {
-        const stripe = new Stripe(cfg.stripeSecretKey);
+      if (stripe && priceId) {
         const checkoutSession = {
           mode: "subscription",
           line_items: [{ price: priceId, quantity: 1 }],
