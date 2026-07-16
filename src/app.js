@@ -773,7 +773,11 @@ export function createApp(overrides = {}) {
     res.status(readiness.ready ? 200 : 503).json(readiness);
   });
 
-  app.get("/api/diagnostics", (req, res) => {
+  // Diagnostics enumerate config state (which providers are configured, storage
+  // paths, failed checks) — useful to operators, reconnaissance to anyone else.
+  // Public in development; admin-only in production.
+  const diagnosticsGuard = cfg.isProduction ? requireAdmin : (_req, _res, next) => next();
+  app.get("/api/diagnostics", diagnosticsGuard, (req, res) => {
     const diagnostics = {
       ...evaluateReadiness(cfg),
       logging: logStore.health(),
@@ -1739,7 +1743,7 @@ export function createApp(overrides = {}) {
 
   function requireAdmin(req, res, next) {
     if (!cfg.adminToken) {
-      return res.status(503).json({ error: "Moderation is not configured. Set MIXFORGE_ADMIN_TOKEN." });
+      return res.status(503).json({ error: "Admin access is not configured. Set MIXFORGE_ADMIN_TOKEN." });
     }
     const provided = req.get("x-admin-token") || "";
     // Constant-time compare to avoid leaking the token via timing.
