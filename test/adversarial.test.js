@@ -226,6 +226,34 @@ describe("MixForge adversarial / boundary", () => {
     assert.equal(res.status, 403);
   });
 
+  it("does not list another user's recordings or projects to anonymous callers", async () => {
+    const owner = await signup("private-list@example.com");
+    const form = new FormData();
+    form.append("audio", new Blob(["private"], { type: "audio/webm" }), "private.webm");
+    const up = await fetch(`${baseUrl}/api/recordings`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${owner.body.token}` },
+      body: form
+    });
+    const rec = (await up.json()).recording;
+    await fetch(`${baseUrl}/api/projects`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${owner.body.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "private project", recordingId: rec.id })
+    });
+
+    const anonRecordings = (await (await fetch(`${baseUrl}/api/recordings`)).json()).recordings;
+    assert.ok(
+      !anonRecordings.some((r) => r.id === rec.id),
+      "an owned recording must not appear in an anonymous listing"
+    );
+    const anonProjects = (await (await fetch(`${baseUrl}/api/projects`)).json()).projects;
+    assert.ok(
+      !anonProjects.some((p) => p.recordingId === rec.id),
+      "an owned project must not appear in an anonymous listing"
+    );
+  });
+
   // ---- Checkout validation ----
   it("rejects an unknown plan id", async () => {
     const { body: signed } = await signup("plan@example.com");

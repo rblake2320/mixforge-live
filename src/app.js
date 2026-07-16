@@ -1152,7 +1152,9 @@ export function createApp(overrides = {}) {
 
   app.get("/api/recordings", optionalUser, async (req, res, next) => {
     try {
-      const rows = req.user ? await store.listByOwner("recordings", req.user.id) : await store.list("recordings");
+      // Anonymous callers only ever see ownerless (anonymous) rows; listing
+      // every user's recordings without a session was a metadata leak.
+      const rows = await store.listByOwner("recordings", req.user ? req.user.id : null);
       const recordings = rows.map(publicRecording);
       req.log?.("data_access_query", {
         eventType: "recordings_list_read",
@@ -1273,7 +1275,7 @@ export function createApp(overrides = {}) {
 
   app.get("/api/projects", optionalUser, async (req, res, next) => {
     try {
-      const projects = req.user ? await store.listByOwner("projects", req.user.id) : await store.list("projects");
+      const projects = await store.listByOwner("projects", req.user ? req.user.id : null);
       req.log?.("data_access_query", {
         eventType: "projects_list_read",
         severity: "INFO",
