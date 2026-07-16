@@ -163,7 +163,8 @@ export function evaluateReadiness(cfg) {
     capabilities: {
       auth: "real",
       recording: "real",
-      fileStorage: "local-json-and-files",
+      store: cfg.databaseUrl || cfg.storeBackend === "postgres" ? "postgres" : "local-json",
+      fileStorage: cfg.s3Bucket || cfg.storageBackend === "s3" ? "s3" : "local-files",
       checkout: stripeConfigured ? "stripe" : cfg.demoMode ? "demo-disabled-payment" : "unavailable",
       stemSeparation: stemsplitConfigured ? "stemsplit" : cfg.demoMode ? "demo-preview" : "unavailable"
     },

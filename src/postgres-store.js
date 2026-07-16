@@ -36,6 +36,7 @@ export class PostgresStore {
     if (!cfg.databaseUrl) {
       throw new Error("PostgresStore requires a databaseUrl.");
     }
+    this.kind = "postgres";
     this.pool = new pg.Pool({
       connectionString: cfg.databaseUrl,
       max: cfg.pgPoolMax || 10,

@@ -116,6 +116,9 @@ describe("/api/health as a real liveness probe", () => {
     assert.equal(response.status, 200);
     assert.equal(payload.ok, true);
     assert.deepEqual(payload.checks, { store: true, logging: true });
+    assert.equal(payload.store, "json", "health must report the active store backend");
+    assert.equal(payload.uploads, "local", "health must report the active upload storage");
+    assert.equal(payload.version, app.locals.config.serviceVersion);
   });
 
   it("degrades to 503 when log storage becomes unwritable", async () => {

@@ -743,9 +743,10 @@ export function createApp(overrides = {}) {
     });
     res.status(ok ? 200 : 503).json({
       ok,
-      service: "mixforge-backend",
-      version: "0.1.0",
-      storage: "local-json",
+      service: cfg.serviceName,
+      version: cfg.serviceVersion,
+      store: store.kind,
+      uploads: storage.kind,
       checks: { store: storeOk, logging: logging.ok },
       dataRoot: cfg.dataRoot,
       logRoot: cfg.logRoot,
