@@ -48,6 +48,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((r) => server.close(r));
+  await app.locals.logStore.close();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 

@@ -305,6 +305,13 @@ export class JsonlLogStore {
     return this.writeChain;
   }
 
+  // Deterministic drain for owners that are about to discard the log
+  // directory (test teardowns, controlled shutdowns): waits for every
+  // buffered line to reach disk so no flush timer fires afterwards.
+  async close() {
+    await this.flush();
+  }
+
   flushSync() {
     // Crash/shutdown path: drain whatever is buffered with blocking writes so
     // the final events (uncaught exception, shutdown) reach disk.

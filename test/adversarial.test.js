@@ -44,6 +44,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
+  await app.locals.logStore.close();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -324,6 +325,7 @@ describe("MixForge adversarial / boundary", () => {
       }
     } finally {
       await new Promise((resolve) => concServer.close(resolve));
+      await concApp.locals.logStore.close();
       fs.rmSync(root, { recursive: true, force: true });
     }
   });

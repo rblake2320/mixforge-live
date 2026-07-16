@@ -69,6 +69,7 @@ describe("Redis-backed rate limiter (real Redis)", { skip: reachable ? false : "
       await redis.del(...keys);
     }
     redis.disconnect();
+    await app?.locals.logStore.close();
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 

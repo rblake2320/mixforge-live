@@ -43,6 +43,7 @@ async function withTempApp(overrides, fn) {
     if (isolatedServer) {
       await new Promise((resolve) => isolatedServer.close(resolve));
     }
+    await isolatedApp.locals.logStore.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
@@ -71,6 +72,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
+  await app.locals.logStore.close();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
