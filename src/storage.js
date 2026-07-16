@@ -30,6 +30,12 @@ class LocalFileStorage {
     return relativePath;
   }
 
+  // Local files have no fetchable URL for third parties; callers fall back to
+  // handing the provider the local path instead.
+  async signedSourceUrl(_relativePath) {
+    return null;
+  }
+
   async exists(relativePath) {
     try {
       await fs.promises.access(this.ensureInside(relativePath));
@@ -113,6 +119,17 @@ class S3FileStorage {
       { expiresIn: 300 }
     );
     return res.redirect(302, url);
+  }
+
+  // A time-limited URL an external provider (StemSplit) can fetch the source
+  // from, since persisted objects no longer exist on local disk.
+  async signedSourceUrl(relativePath) {
+    await this._load();
+    return this._sdk.getSignedUrl(
+      this._client,
+      new this._sdk.GetObjectCommand({ Bucket: this.bucket, Key: this.key(relativePath) }),
+      { expiresIn: 3600 }
+    );
   }
 
   async remove(relativePath) {

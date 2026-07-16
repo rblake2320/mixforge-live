@@ -1115,6 +1115,11 @@ export function createApp(overrides = {}) {
     }
 
     const activeBeat = req.body.beatId ? await store.findById("beats", req.body.beatId) : null;
+    // Hand the multer temp file to the storage backend. Local storage keeps it
+    // in place; S3 uploads it and deletes the local copy — without this call
+    // S3 mode would serve pre-signed URLs to objects that were never uploaded.
+    const uploadedPath = path.relative(cfg.uploadRoot, req.file.path).replaceAll("\\", "/");
+    const persistedPath = await storage.persist(req.file.path, uploadedPath);
     const recording = {
       id: crypto.randomUUID(),
       userId: req.user ? req.user.id : null,
@@ -1125,7 +1130,7 @@ export function createApp(overrides = {}) {
       mimeType: req.file.mimetype || "application/octet-stream",
       sizeBytes: req.file.size,
       durationSeconds: Number(req.body.durationSeconds || 0),
-      filePath: path.relative(cfg.uploadRoot, req.file.path).replaceAll("\\", "/"),
+      filePath: persistedPath,
       moderationStatus: "active",
       createdAt: now(),
       updatedAt: now()
@@ -1412,6 +1417,11 @@ export function createApp(overrides = {}) {
       what: { jobId: job.id, provider: job.provider, mode: job.mode }
     });
 
+    if (req.file && job.provider === "demo") {
+      // Demo jobs never leave the box, but the uploaded source still belongs in
+      // the configured storage backend so nothing is stranded on local disk.
+      await storage.persist(req.file.path, job.sourceFilePath);
+    }
     if (job.provider === "demo") {
       req.log?.("agent_decision_reasoning", {
         eventType: "demo_mode_provider_selected",
@@ -1428,10 +1438,23 @@ export function createApp(overrides = {}) {
 
     const client = stemsplitClient(cfg);
     try {
-      const rawRemote = await timedDependency(req, "stemsplit", `${sourceKind}.create`, () =>
-        stemJobCreateCall(client, sourceKind, {
-          sourcePath,
-          sourceUrl,
+      // A recording persisted to object storage no longer exists on local
+      // disk, so StemSplit gets a time-limited URL instead of a dead path.
+      let submitKind = sourceKind;
+      let submitUrl = sourceUrl;
+      let submitPath = sourcePath;
+      if (sourceKind === "file" && !req.file && recording?.filePath) {
+        const remoteUrl = await storage.signedSourceUrl(recording.filePath);
+        if (remoteUrl) {
+          submitKind = "url";
+          submitUrl = remoteUrl;
+          submitPath = null;
+        }
+      }
+      const rawRemote = await timedDependency(req, "stemsplit", `${submitKind}.create`, () =>
+        stemJobCreateCall(client, submitKind, {
+          sourcePath: submitPath,
+          sourceUrl: submitUrl,
           metadata: {
             mixforgeJobId: job.id,
             userId: job.userId,
@@ -1439,6 +1462,10 @@ export function createApp(overrides = {}) {
           }
         })
       );
+      if (req.file) {
+        // StemSplit has consumed the upload; move it into the storage backend.
+        await storage.persist(req.file.path, job.sourceFilePath);
+      }
       const remote = normalizeRemoteJob(rawRemote);
       const updated = await store.update("stemJobs", job.id, {
         providerJobId: remote.id,
