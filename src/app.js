@@ -828,7 +828,8 @@ export function createApp(overrides = {}) {
         });
         return res.status(400).json({ error: "A valid email is required." });
       }
-      if (password.length < 6) {
+      // NIST SP 800-63B-4 minimum for user-chosen passwords.
+      if (password.length < 8) {
         req.log?.("security_threat", {
           eventType: "input_validation_failed_signup_password",
           severity: "WARN",
@@ -836,7 +837,7 @@ export function createApp(overrides = {}) {
           actor: { userId: null, userEmailHash: hashIdentifier(email), authenticated: false },
           what: { field: "password", reason: "too_short" }
         });
-        return res.status(400).json({ error: "Password must be at least 6 characters." });
+        return res.status(400).json({ error: "Password must be at least 8 characters." });
       }
       if (await store.findBy("users", "email", email)) {
         req.log?.("authentication", {
@@ -1033,8 +1034,8 @@ export function createApp(overrides = {}) {
     try {
       const token = typeof req.body.token === "string" ? req.body.token.trim() : "";
       const password = req.body.password;
-      if (typeof password !== "string" || password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters." });
+      if (typeof password !== "string" || password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters." });
       }
       const record = token ? await store.findBy("passwordResets", "token", token) : null;
       if (!record || record.usedAt || Date.parse(record.expiresAt) < Date.now()) {

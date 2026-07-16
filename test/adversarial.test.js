@@ -61,14 +61,14 @@ describe("MixForge adversarial / boundary", () => {
     assert.equal(res.status, 400);
   });
 
-  it("rejects signup with a password shorter than 6 chars", async () => {
-    const { res, body } = await signup("shortpw@example.com", "12345");
+  it("rejects signup with a password shorter than 8 chars", async () => {
+    const { res, body } = await signup("shortpw@example.com", "1234567");
     assert.equal(res.status, 400);
-    assert.match(body.error, /at least 6/i);
+    assert.match(body.error, /at least 8/i);
   });
 
-  it("accepts exactly-6-char password (boundary)", async () => {
-    const { res } = await signup("sixchar@example.com", "123456");
+  it("accepts exactly-8-char password (boundary)", async () => {
+    const { res } = await signup("eightchar@example.com", "12345678");
     assert.equal(res.status, 201);
   });
 

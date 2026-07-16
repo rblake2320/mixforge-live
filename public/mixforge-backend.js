@@ -381,7 +381,7 @@
         </label>
         <label>
           Password
-          <input name="password" type="password" autocomplete="${activeMode === "signup" ? "new-password" : "current-password"}" minlength="6" required>
+          <input name="password" type="password" autocomplete="${activeMode === "signup" ? "new-password" : "current-password"}" minlength="8" required>
         </label>
         <button class="btn btn-primary" type="submit" style="justify-content:center;">
           ${activeMode === "signup" ? "Create Free Account" : "Log In"}
