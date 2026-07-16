@@ -39,34 +39,36 @@ npm run doctor
 
 ## API
 
-- `GET /api/health`
-- `GET /api/readiness`
-- `GET /api/diagnostics`
+- `GET /api/health` — liveness (public)
+- `GET /api/readiness` — launch checklist, 503 until production-ready (public)
+- `GET /api/diagnostics` — readiness + logging detail (public in dev, `x-admin-token` in production)
 - `GET /api/logs/taxonomy`
-- `POST /api/auth/signup`
-- `POST /api/auth/login`
+- `POST /api/auth/signup` / `POST /api/auth/login` — passwords must be 8+ chars
+- `POST /api/auth/verify-email` / `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` — reset revokes all sessions issued before it
 - `GET /api/me`
-- `GET /api/beats`
-- `GET /api/community`
-- `POST /api/recordings`
-- `GET /api/recordings`
-- `GET /api/recordings/:id/audio`
-- `POST /api/projects`
-- `GET /api/projects`
-- `POST /api/stems/jobs`
-- `GET /api/stems/jobs/:id`
-- `POST /api/stems/webhook`
-- `GET /api/plans`
-- `POST /api/billing/checkout`
+- `GET /api/beats` / `GET /api/community` / `GET /api/plans`
+- `POST /api/recordings` / `GET /api/recordings` / `GET /api/recordings/:id/audio` — anonymous callers only ever see ownerless rows
+- `POST /api/projects` / `GET /api/projects`
+- `POST /api/stems/jobs` / `GET /api/stems/jobs/:id` / `POST /api/stems/webhook`
+- `POST /api/billing/checkout` / `POST /api/billing/webhook`
+- `POST /api/contact` (rate-limited like all write endpoints)
+- `POST /api/reports` / `POST /api/dmca` — trust & safety intake
+- `GET /api/legal/terms` / `GET /api/legal/dmca`
+- `GET /api/moderation/reports` / `GET /api/moderation/dmca` / `POST /api/moderation/recordings/:id/status` — require `x-admin-token`
 
-## Production switches still needed
+## Scaling switches (built, opt-in via env)
 
-- Replace local JSON persistence with Supabase/Postgres or managed Postgres.
-- Replace local upload storage with Supabase Storage, S3, R2, or equivalent private object storage.
+- **Postgres persistence**: set `DATABASE_URL` (flat-file JSON store is the zero-config default).
+- **S3/R2 upload storage**: set `S3_BUCKET` (+ credentials). Uploads are persisted to the bucket and served via pre-signed URLs; stem jobs from stored recordings hand StemSplit a signed URL.
+- **Redis-backed rate limits**: set `REDIS_URL` so limits hold across instances and restarts.
+- **Moderation/admin**: set `MIXFORGE_ADMIN_TOKEN`.
+
+## Still manual before public launch
+
 - Forward JSONL logs from `MIXFORGE_LOG_ROOT` into a SIEM/log platform and retain audit/security logs for the required compliance window.
-- Configure StemSplit for real stem separation.
+- Configure StemSplit (`STEMSPLIT_API_KEY`, `STEMSPLIT_WEBHOOK_SECRET`) for real stem separation.
 - Configure live Stripe products, price IDs, webhook signing, and customer portal.
-- Add moderation, licensing checks, rate limits, and abuse monitoring before public launch.
+- Email delivery for verification/reset tokens (demo mode returns tokens in the API response instead).
 
 ## One-day launch checklist
 
