@@ -681,7 +681,7 @@ export function createApp(overrides = {}) {
     })
   );
   app.use(
-    ["/api/recordings", "/api/stems/jobs", "/api/billing/checkout", "/api/reports", "/api/dmca"],
+    ["/api/recordings", "/api/stems/jobs", "/api/billing/checkout", "/api/reports", "/api/dmca", "/api/contact"],
     buildLimiter({
       windowMs: writeWindowMs,
       limit: writeLimit,

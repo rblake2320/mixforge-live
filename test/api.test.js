@@ -336,6 +336,24 @@ describe("MixForge API", () => {
     assert.equal(payload.contact.message, "Interested in Label / Agency.");
   });
 
+  it("rate-limits contact form spam like the other write endpoints", async () => {
+    await withTempApp({}, async (isolatedBaseUrl) => {
+      const codes = [];
+      for (let i = 0; i < 35; i++) {
+        const res = await fetch(`${isolatedBaseUrl}/api/contact`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "spam", email: `spam-${i}@example.com`, message: "buy now" })
+        });
+        codes.push(res.status);
+      }
+      assert.ok(
+        codes.filter((code) => code === 429).length >= 1,
+        `contact must hit the write limiter past 30/min, got: ${codes.join(",")}`
+      );
+    });
+  });
+
   it("reports readiness status", async () => {
     const response = await fetch(`${baseUrl}/api/readiness`);
     const payload = await response.json();
