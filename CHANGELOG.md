@@ -60,6 +60,26 @@ Production-readiness pass (branch `improve/production-ready-20260716`).
 - `scripts/live-smoke.js` sends `x-admin-token` when `MIXFORGE_ADMIN_TOKEN` is
   set and treats a gated 401/503 as expected; DEPLOYMENT.md documents the gate.
 
+### Fixed from the 2026-07-17 pre-launch test report
+- **Mobile navigation restored**: the hamburger was 0–16 px visible at
+  320–390 px (header CTA/status pill crowded it off-screen) and the page
+  overflowed horizontally at 320 px. Verified 0 px overflow and a fully
+  visible 44×44 hamburger at 320/375/390/414/768.
+- **Every footer link has a real destination**: Privacy, Terms,
+  Rights & Licensing, and Cookies are real pages under `/legal`; API Docs is a
+  real endpoint reference at `/docs.html`; Blog/Discord/About/Careers/Press
+  removed until they exist.
+- **Accessibility**: record control is a real keyboard-operable button with an
+  accessible name; all sliders/selects/file/url inputs and icon-only buttons
+  labeled; `<main>` landmark; heading order fixed; modal `aria-labelledby`;
+  44 px touch targets on phone widths; Enter submits the link-import field.
+- **Launch metadata**: meta description, canonical, Open Graph/Twitter cards,
+  SVG favicon, web manifest, theme-color.
+- **Permissions-Policy header**: microphone self-only, camera/geolocation/
+  payment/usb denied.
+- **Honest copy**: "Join thousands", "500+ beats", and "real tracks from real
+  creators" replaced with verifiable claims and sample-content labeling.
+
 ### Deferred (needs human decision)
 - Express 4 → 5 migration (one major, touches middleware semantics).
 - Native bcrypt/argon2 (bcryptjs is pure JS and blocks the event loop ~100 ms

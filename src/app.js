@@ -480,6 +480,12 @@ export function createApp(overrides = {}) {
       crossOriginEmbedderPolicy: false
     })
   );
+  // Helmet does not set Permissions-Policy. The recorder needs the microphone
+  // on this origin; every other powerful feature is explicitly denied.
+  app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "microphone=(self), camera=(), geolocation=(), payment=(), usb=()");
+    next();
+  });
   app.use(
     cors({
       origin(origin, cb) {
