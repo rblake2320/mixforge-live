@@ -43,6 +43,23 @@ Production-readiness pass (branch `improve/production-ready-20260716`).
 - bcryptjs 2.4.3 → 3.0.3 (maintained line, identical API).
 - helmet 8.2 → 8.3, AWS SDK minors. `npm audit`: 0 vulnerabilities.
 
+### Fixed after adversarial review (33-agent workflow over the branch diff)
+- Stem uploads are persisted **before** the job row and provider call exist, so
+  a storage failure can no longer orphan a live StemSplit job (previously the
+  persist sat between the provider accepting the job and `providerJobId` being
+  recorded, making the remote job unpollable and unmatchable by webhook).
+- Session revocation now compares a `passwordVersion` (`pwv`) claim instead of
+  JWT `iat` vs reset time — `iat`'s one-second resolution let a token minted in
+  the same second as the reset survive.
+- Login form no longer applies `minlength="8"` (signup only); legacy accounts
+  with 6–7-char passwords could authenticate via the API but were locked out
+  of the UI by browser constraint validation.
+- Readiness `capabilities` now mirror the exact factory selection precedence
+  (`MIXFORGE_STORE`/`MIXFORGE_STORAGE` override wins over credential presence)
+  instead of contradicting the running backend.
+- `scripts/live-smoke.js` sends `x-admin-token` when `MIXFORGE_ADMIN_TOKEN` is
+  set and treats a gated 401/503 as expected; DEPLOYMENT.md documents the gate.
+
 ### Deferred (needs human decision)
 - Express 4 → 5 migration (one major, touches middleware semantics).
 - Native bcrypt/argon2 (bcryptjs is pure JS and blocks the event loop ~100 ms

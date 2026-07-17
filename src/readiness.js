@@ -163,8 +163,11 @@ export function evaluateReadiness(cfg) {
     capabilities: {
       auth: "real",
       recording: "real",
-      store: cfg.databaseUrl || cfg.storeBackend === "postgres" ? "postgres" : "local-json",
-      fileStorage: cfg.s3Bucket || cfg.storageBackend === "s3" ? "s3" : "local-files",
+      // Mirrors the exact selection precedence of createStore/createStorage
+      // (explicit backend override wins over credential presence) so readiness
+      // never reports a backend the factories would not actually pick.
+      store: cfg.storeBackend || (cfg.databaseUrl ? "postgres" : "json"),
+      fileStorage: cfg.storageBackend || (cfg.s3Bucket ? "s3" : "local"),
       checkout: stripeConfigured ? "stripe" : cfg.demoMode ? "demo-disabled-payment" : "unavailable",
       stemSeparation: stemsplitConfigured ? "stemsplit" : cfg.demoMode ? "demo-preview" : "unavailable"
     },

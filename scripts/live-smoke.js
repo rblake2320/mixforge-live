@@ -89,10 +89,19 @@ results.push({
   capabilities: readiness.body.capabilities
 });
 
-const diagnostics = await readJson("/api/diagnostics");
+// Diagnostics are admin-gated in production. Send the admin token when the
+// operator provides one; without it a 401/503 is the EXPECTED gated result,
+// not a failure.
+const adminToken = process.env.MIXFORGE_ADMIN_TOKEN || "";
+const diagnostics = await readJson(
+  "/api/diagnostics",
+  adminToken ? { headers: { "x-admin-token": adminToken } } : {}
+);
+const diagnosticsGated = !adminToken && [401, 503].includes(diagnostics.response.status);
 results.push({
   check: "diagnostics",
-  ok: diagnostics.response.ok,
+  ok: diagnostics.response.ok || diagnosticsGated,
+  gated: diagnosticsGated || undefined,
   loggingOk: diagnostics.body.logging?.ok,
   logTypes: diagnostics.body.logging?.logTypes
 });

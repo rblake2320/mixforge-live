@@ -1057,7 +1057,10 @@ export function createApp(overrides = {}) {
       }
       await store.update("users", user.id, {
         passwordHash: await bcrypt.hash(password, 12),
-        // Recorded so attachUser can revoke every session issued before the reset.
+        // Bumping the version revokes every session issued before the reset
+        // (attachUser compares it against the token's pwv claim); the timestamp
+        // is kept for the audit trail.
+        passwordVersion: (user.passwordVersion || 0) + 1,
         passwordChangedAt: now()
       });
       await store.update("passwordResets", record.id, { usedAt: now() });
@@ -1407,6 +1410,13 @@ export function createApp(overrides = {}) {
       completeAfter: cfg.stemsplitApiKey ? null : new Date(Date.now() + 1800).toISOString()
     };
 
+    // Persist the upload BEFORE the job row or any remote work exists: local
+    // storage is a no-op, S3 uploads the object and removes the temp file. A
+    // persist failure (e.g. S3 outage) therefore aborts cleanly with no
+    // half-created state to reconcile.
+    if (req.file) {
+      await storage.persist(req.file.path, job.sourceFilePath);
+    }
     await store.insert("stemJobs", job);
     req.log?.("audit", {
       eventType: "stem_job_created",
@@ -1421,11 +1431,6 @@ export function createApp(overrides = {}) {
       what: { jobId: job.id, provider: job.provider, mode: job.mode }
     });
 
-    if (req.file && job.provider === "demo") {
-      // Demo jobs never leave the box, but the uploaded source still belongs in
-      // the configured storage backend so nothing is stranded on local disk.
-      await storage.persist(req.file.path, job.sourceFilePath);
-    }
     if (job.provider === "demo") {
       req.log?.("agent_decision_reasoning", {
         eventType: "demo_mode_provider_selected",
@@ -1442,17 +1447,21 @@ export function createApp(overrides = {}) {
 
     const client = stemsplitClient(cfg);
     try {
-      // A recording persisted to object storage no longer exists on local
-      // disk, so StemSplit gets a time-limited URL instead of a dead path.
+      // Choose how StemSplit fetches the source. Anything persisted to object
+      // storage no longer exists on local disk, so it is handed over as a
+      // time-limited signed URL; local storage keeps the file on disk and the
+      // SDK uploads it directly.
       let submitKind = sourceKind;
       let submitUrl = sourceUrl;
-      let submitPath = sourcePath;
-      if (sourceKind === "file" && !req.file && recording?.filePath) {
-        const remoteUrl = await storage.signedSourceUrl(recording.filePath);
+      let submitPath = null;
+      if (sourceKind === "file") {
+        const relativeSource = req.file ? job.sourceFilePath : recording?.filePath || null;
+        const remoteUrl = relativeSource ? await storage.signedSourceUrl(relativeSource) : null;
         if (remoteUrl) {
           submitKind = "url";
           submitUrl = remoteUrl;
-          submitPath = null;
+        } else {
+          submitPath = req.file ? req.file.path : sourcePath;
         }
       }
       const rawRemote = await timedDependency(req, "stemsplit", `${submitKind}.create`, () =>
@@ -1466,10 +1475,6 @@ export function createApp(overrides = {}) {
           }
         })
       );
-      if (req.file) {
-        // StemSplit has consumed the upload; move it into the storage backend.
-        await storage.persist(req.file.path, job.sourceFilePath);
-      }
       const remote = normalizeRemoteJob(rawRemote);
       const updated = await store.update("stemJobs", job.id, {
         providerJobId: remote.id,

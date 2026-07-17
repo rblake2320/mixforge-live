@@ -109,10 +109,9 @@ describe("password reset", () => {
   });
 
   it("revokes sessions issued before a password reset", async () => {
+    // No sleep needed: revocation compares password VERSIONS, so even a token
+    // minted in the same second as the reset is revoked deterministically.
     const signed = await signup("revoke@example.com");
-    // JWT iat has one-second resolution; make sure the reset lands in a later
-    // second than the original token so the comparison is deterministic.
-    await new Promise((r) => setTimeout(r, 1100));
     const forgot = await (await post("/api/auth/forgot-password", { email: "revoke@example.com" })).json();
     const reset = await post("/api/auth/reset-password", { token: forgot.resetToken, password: "brandnew99" });
     assert.equal(reset.status, 200);
