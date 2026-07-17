@@ -1053,35 +1053,13 @@
   }
 
   function wireFooterLinks() {
-    const routes = {
-      "everyday mode": "#modes",
-      "creator mode": "#modes",
-      "dj mode": "#modes",
-      "beat marketplace": "#community",
-      "pricing": "#pricing",
-      "explore mixes": "#community",
-      "beat store": "#community",
-      "creator profiles": "#community",
-      "api docs": "/api/health"
-    };
-
-    document.querySelectorAll(".footer a").forEach((link) => {
-      const text = link.textContent.trim().toLowerCase();
-      if (text === "contact") {
-        link.addEventListener("click", (event) => {
-          event.preventDefault();
-          openContactForm("General");
-        });
-        return;
-      }
-      if (routes[text]) {
-        link.setAttribute("href", routes[text]);
-      } else if (link.getAttribute("href") === "#") {
-        link.addEventListener("click", (event) => {
-          event.preventDefault();
-          toast(`${link.textContent.trim()} page is queued for production content.`);
-        });
-      }
+    // Every footer link has a real destination in the markup; the only JS
+    // enhancement left is the contact link, which opens the in-app form.
+    document.querySelectorAll(".footer a[data-contact-link]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        openContactForm("General");
+      });
     });
   }
 
