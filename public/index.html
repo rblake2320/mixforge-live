@@ -208,6 +208,9 @@ a { color: inherit; text-decoration: none; }
   padding-top: var(--space-16);
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-16); align-items: center;
 }
+/* min-width:0 lets the CTA row wrap inside the track instead of widening it
+   past the viewport on narrow screens. */
+.hero-content > * { min-width: 0; }
 .hero-badge {
   display: inline-flex; align-items: center; gap: var(--space-2);
   padding: var(--space-1) var(--space-4); border-radius: var(--radius-full);
@@ -407,7 +410,7 @@ a { color: inherit; text-decoration: none; }
 .section-title { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; margin-bottom: var(--space-4); }
 .section-desc { font-size: var(--text-lg); color: var(--color-text-muted); max-width: 52ch; line-height: 1.7; margin-bottom: var(--space-10); }
 
-.studio-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); border-bottom: 1px solid var(--color-divider); }
+.studio-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); border-bottom: 1px solid var(--color-divider); }
 .studio-tab {
   padding: var(--space-3) var(--space-5); font-size: var(--text-sm); font-weight: 600;
   color: var(--color-text-muted); cursor: pointer; border: none; background: none;
@@ -427,6 +430,9 @@ a { color: inherit; text-decoration: none; }
   border-radius: var(--radius-2xl); padding: var(--space-8);
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8);
 }
+/* Grid children default to min-width:auto, which lets long content push the
+   track wider than the viewport on narrow screens. */
+.vocal-booth > * { min-width: 0; }
 .booth-left { display: flex; flex-direction: column; gap: var(--space-5); }
 .booth-beat-select {
   background: var(--color-surface-2); border: 1px solid var(--color-border);
@@ -793,8 +799,14 @@ a { color: inherit; text-decoration: none; }
   .pricing-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
+  /* The hamburger is the primary navigation on phones — nothing in the header
+     may push it off-screen. Fixed-width items keep flex-shrink:0 and the
+     lower-priority items (CTA, status pill) drop out as width shrinks. */
+  .nav { padding-inline: var(--space-4); }
   .nav-links, .nav-actions .btn-ghost { display: none; }
-  .hamburger { display: flex; }
+  .hamburger { display: flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .nav-logo { flex-shrink: 0; }
+  .theme-toggle { width: 44px; height: 44px; flex-shrink: 0; }
   .hero-content { grid-template-columns: 1fr; }
   .hero-visual { display: none; }
   .modes-grid { grid-template-columns: 1fr; }
@@ -809,10 +821,18 @@ a { color: inherit; text-decoration: none; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .footer-bottom { flex-direction: column; gap: var(--space-3); text-align: center; }
 }
+@media (max-width: 640px) {
+  /* Start Free lives prominently in the mobile menu; keeping it in the header
+     was what clipped the hamburger off-screen on phones. */
+  .nav .nav-actions .btn-primary { display: none; }
+}
 @media (max-width: 480px) {
   .features-grid { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; }
   .hero-title { font-size: clamp(2.2rem, 8vw, 3.5rem); }
+  /* The injected API status pill is diagnostic, not navigation — drop it
+     before it can crowd the hamburger on the narrowest screens. */
+  .nav .api-pill { display: none; }
 }
 
 /* Scrollbar */
@@ -1096,7 +1116,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
             <div class="record-status" id="recordStatus">Make sure your mic is allowed</div>
             <div class="voice-level" style="width:80%;"><div class="voice-level-fill" id="voiceLevel"></div></div>
           </div>
-          <div style="display:flex;gap:var(--space-3);">
+          <div style="display:flex;flex-wrap:wrap;gap:var(--space-3);">
             <button class="btn btn-secondary" style="flex:1;" disabled id="playbackBtn">▶ Play Back</button>
             <button class="btn btn-secondary" style="flex:1;" disabled id="saveBtn">💾 Save Take</button>
           </div>
