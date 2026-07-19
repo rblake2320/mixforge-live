@@ -22,7 +22,7 @@ import {
   requestLoggerMiddleware,
   timedDependency
 } from "./logging.js";
-import { evaluateReadiness } from "./readiness.js";
+import { evaluateReadiness, probeStemEngine } from "./readiness.js";
 
 const PLAN_CATALOG = {
   free: {
@@ -781,8 +781,21 @@ export function createApp(overrides = {}) {
     });
   });
 
-  app.get("/api/readiness", (req, res) => {
+  // Static config checks plus, when the local engine is configured, a live
+  // reachability probe — a dead tunnel must flip readiness, not wait for a
+  // user's job to fail.
+  async function readinessWithLiveChecks() {
     const readiness = evaluateReadiness(cfg);
+    const engineCheck = await probeStemEngine(cfg);
+    if (engineCheck) {
+      readiness.checks.push(engineCheck);
+      readiness.ready = readiness.checks.filter((check) => check.required).every((check) => check.ok);
+    }
+    return readiness;
+  }
+
+  app.get("/api/readiness", async (req, res) => {
+    const readiness = await readinessWithLiveChecks();
     req.log?.("health_check_heartbeat", {
       eventType: "readiness_check_requested",
       severity: readiness.ready ? "INFO" : "WARN",
@@ -800,9 +813,9 @@ export function createApp(overrides = {}) {
   // paths, failed checks) — useful to operators, reconnaissance to anyone else.
   // Public in development; admin-only in production.
   const diagnosticsGuard = cfg.isProduction ? requireAdmin : (_req, _res, next) => next();
-  app.get("/api/diagnostics", diagnosticsGuard, (req, res) => {
+  app.get("/api/diagnostics", diagnosticsGuard, async (req, res) => {
     const diagnostics = {
-      ...evaluateReadiness(cfg),
+      ...(await readinessWithLiveChecks()),
       logging: logStore.health(),
       logTaxonomy: LOG_TYPES
     };

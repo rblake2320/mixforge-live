@@ -21,6 +21,11 @@ const engineState = {
 
 // Minimal engine double implementing the real wire format.
 const fakeEngine = http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/health") {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true, model: "htdemucs", cudaAvailable: true }));
+    return;
+  }
   if (req.method === "POST" && req.url === "/v1/jobs") {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
@@ -115,6 +120,40 @@ describe("local stem engine provider", () => {
     const check = readiness.checks.find((c) => c.id === "stemsplit");
     assert.equal(check.ok, true, "engine URL must satisfy the stem readiness check");
     assert.equal(readiness.capabilities.stemSeparation, "local-engine");
+  });
+
+  it("readiness live-probes the engine: reachable passes, dead tunnel fails", async () => {
+    const live = await (await fetch(`${baseUrl}/api/readiness`)).json();
+    const liveCheck = live.checks.find((c) => c.id === "stem_engine_reachable");
+    assert.ok(liveCheck, "readiness must include the live engine probe when configured");
+    assert.equal(liveCheck.ok, true);
+    assert.match(liveCheck.detail, /htdemucs/);
+
+    // Same app pointed at a closed port: the probe must fail loudly.
+    const deadTmp = fs.mkdtempSync(path.join(os.tmpdir(), "mixforge-engine-dead-"));
+    const deadApp = createApp({
+      dataFile: path.join(deadTmp, "db.json"),
+      uploadRoot: path.join(deadTmp, "uploads"),
+      logRoot: path.join(deadTmp, "logs"),
+      publicDir: path.join(process.cwd(), "public"),
+      jwtSecret: "stem-engine-dead-secret",
+      demoMode: false,
+      stemEngineUrl: "http://127.0.0.1:9"
+    });
+    const deadServer = deadApp.listen(0, "127.0.0.1");
+    await new Promise((r) => deadServer.once("listening", r));
+    try {
+      const dead = await (
+        await fetch(`http://127.0.0.1:${deadServer.address().port}/api/readiness`)
+      ).json();
+      const deadCheck = dead.checks.find((c) => c.id === "stem_engine_reachable");
+      assert.equal(deadCheck.ok, false, "an unreachable engine must fail the probe");
+      assert.match(deadCheck.detail, /unreachable|responded/i);
+    } finally {
+      await new Promise((r) => deadServer.close(r));
+      await deadApp.locals.logStore.close();
+      fs.rmSync(deadTmp, { recursive: true, force: true });
+    }
   });
 
   it("runs a real-mode stem job through the engine's REST API", async () => {

@@ -185,6 +185,38 @@ export function evaluateReadiness(cfg) {
   };
 }
 
+// Live reachability probe for the self-hosted stem engine. A configured-but-
+// unreachable engine (dead tunnel, stopped service) must surface in readiness
+// so monitoring sees it before a user's job fails.
+export async function probeStemEngine(cfg) {
+  if (!cfg.stemEngineUrl) {
+    return null;
+  }
+  try {
+    const response = await fetch(`${cfg.stemEngineUrl.replace(/\/+$/, "")}/health`, {
+      signal: AbortSignal.timeout(2500)
+    });
+    const body = await response.json().catch(() => ({}));
+    return {
+      id: "stem_engine_reachable",
+      label: "Local stem engine answers its health check",
+      required: Boolean(cfg.isProduction),
+      ok: response.ok && body.ok === true,
+      detail: response.ok
+        ? `${cfg.stemEngineUrl} (${body.model || "unknown model"}, cuda: ${body.cudaAvailable})`
+        : `${cfg.stemEngineUrl} responded ${response.status}`
+    };
+  } catch (error) {
+    return {
+      id: "stem_engine_reachable",
+      label: "Local stem engine answers its health check",
+      required: Boolean(cfg.isProduction),
+      ok: false,
+      detail: `${cfg.stemEngineUrl} unreachable: ${error.message}`
+    };
+  }
+}
+
 export function assertMinimumProductionConfig(cfg) {
   if (!cfg.isProduction) {
     return;

@@ -16,6 +16,18 @@ the pre-launch retest gate passes.
 Engine as a permanent Windows service: run `stem-engine/install-service.ps1` **as Admin**
 (NSSM, same pattern as MemoryWeb-API). Verify: `curl http://127.0.0.1:9077/health`.
 
+**Tunnel resilience (Option A):** run `cloudflared` as a service too (`cloudflared service install`)
+so the tunnel restarts independently of the engine. `/api/readiness` now live-probes the
+engine's health endpoint — a dead tunnel or stopped engine flips readiness to 503 in
+production, so point uptime monitoring at `/api/readiness`, not just `/api/health`.
+
+**Capacity fallback trigger:** one 5090 ≈ a 3-4 min track separated in ~40-70 s
+(htdemucs, jobs serialize on the GPU). The queue is comfortable below ~50 jobs/hour
+sustained. If the job queue depth regularly exceeds ~10 (users waiting >10 min),
+that's the trigger to either add the second GPU box (a Spark) behind the same
+tunnel or temporarily set StemSplit keys and remove `STEM_ENGINE_URL` — the code
+falls back with a config change, no deploy.
+
 ## 2. Production environment (VPS dashboard / .env — owner only)
 - [ ] `NODE_ENV=production`
 - [ ] `JWT_SECRET` — unique, 32+ chars (`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`)
@@ -37,7 +49,7 @@ Engine as a permanent Windows service: run `stem-engine/install-service.ps1` **a
 7. Password reset e2e (demo mode off = token via email — email delivery is the one feature still manual; interim: operate resets via support until an SMTP/Resend integration lands)
 
 ## 4. Owner review items (flagged, non-blocking)
-- Legal pages (`/legal/*`) — generated to match actual behavior; counsel review before public marketing push
+- Legal pages (`/legal/*`) — generated to match actual behavior; counsel review before public marketing push. Specifically confirm: the mashup/derivative-work language in Terms §3 + Rights & Licensing, and the committed 3-business-day takedown review SLA (content is inaccessible during review, so the SLA only delays restoration, never removal)
 - Marketing copy — real numbers can replace the launch-honest claims when real data exists
 - Express 4→5 migration — deferred, tracked in CHANGELOG
 
