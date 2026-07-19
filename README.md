@@ -56,6 +56,23 @@ npm run doctor
 - `GET /api/legal/terms` / `GET /api/legal/dmca`
 - `GET /api/moderation/reports` / `GET /api/moderation/dmca` / `POST /api/moderation/recordings/:id/status` — require `x-admin-token`
 
+## Self-hosted stem engine (built, opt-in via env)
+
+Run real stem separation on your own GPU instead of the hosted StemSplit
+provider — no per-job cost, audio never leaves your infrastructure:
+
+```bash
+pip install -r stem-engine/requirements.txt
+cd stem-engine && python -m uvicorn engine:app --host 127.0.0.1 --port 9077
+# then in .env:  STEM_ENGINE_URL=http://127.0.0.1:9077
+```
+
+Jobs run Demucs (`STEM_ENGINE_MODEL=htdemucs` default, `htdemucs_ft` for higher
+quality) and include BPM/key analysis. Verified on an RTX 5090: a 12 s track
+separates into 4 stems in ~3 s end-to-end. YouTube/SoundCloud link import
+still requires the hosted provider; the engine handles uploads and direct
+audio URLs.
+
 ## Scaling switches (built, opt-in via env)
 
 - **Postgres persistence**: set `DATABASE_URL` (flat-file JSON store is the zero-config default).

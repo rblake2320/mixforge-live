@@ -3,3 +3,6 @@ node_modules/
 data/
 server.*.log
 npm-debug.log*
+stem-engine/data/
+stem-engine/__pycache__/
+stem-engine/test-mix.wav

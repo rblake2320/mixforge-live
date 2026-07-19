@@ -80,6 +80,17 @@ Production-readiness pass (branch `improve/production-ready-20260716`).
 - **Honest copy**: "Join thousands", "500+ beats", and "real tracks from real
   creators" replaced with verifiable claims and sample-content labeling.
 
+### Added 2026-07-19 — self-hosted stem engine (`stem-engine/`)
+- New local GPU stem-separation service (FastAPI + Demucs) speaking the same
+  job vocabulary as the hosted provider, plus BPM/key analysis (librosa).
+  `STEM_ENGINE_URL` selects it through the existing `stemsplitClient()` seam:
+  provider `local-engine`, mode `real`, readiness satisfied without StemSplit
+  keys. YouTube/SoundCloud imports remain hosted-only and fail loudly.
+- Live-verified on the RTX 5090: 12 s track → 4 stems in 3.0 s end-to-end
+  through MixForge (7.6 s including cold model load); BPM/key detected;
+  stems fetched over HTTP. 4 new integration tests against a real wire-format
+  engine double (113 total).
+
 ### Deferred (needs human decision)
 - Express 4 → 5 migration (one major, touches middleware semantics).
 - Native bcrypt/argon2 (bcryptjs is pure JS and blocks the event loop ~100 ms

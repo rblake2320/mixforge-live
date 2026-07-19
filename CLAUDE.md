@@ -76,6 +76,16 @@ STEMSPLIT_API_KEY
 STEMSPLIT_WEBHOOK_SECRET
 ```
 
+## Local stem engine
+`stem-engine/engine.py` — self-hosted FastAPI + Demucs GPU service, selected by
+`STEM_ENGINE_URL` (takes precedence over StemSplit; provider `local-engine`).
+Client: `src/stem-engine-client.js` implements the StemSplit SDK surface;
+streaming-site imports throw. Status vocabulary is shared
+(PENDING/PROCESSING/COMPLETED/FAILED) so `mapStemSplitStatus` and the refresh
+path work unchanged. Run: `python -m uvicorn engine:app --port 9077` from
+`stem-engine/`. Requires torch+cu128 (Blackwell) and librosa ≥0.11
+(`librosa.feature.tempo`).
+
 ## Deployment
 - **Recommended**: Hostinger KVM 2 (2.25.184.107) + Cloudflare proxy. See `DEPLOYMENT.md` and `deploy/`.
   - `deploy/vps-setup.sh` — one-time VPS bootstrap (Node 22, PM2, nginx, `/data`)

@@ -8,6 +8,7 @@ import helmet from "helmet";
 import multer from "multer";
 import Stripe from "stripe";
 import { StemSplit, webhooks as stemsplitWebhooks } from "@stemsplit/sdk";
+import { StemEngineClient } from "./stem-engine-client.js";
 import { attachUser, signToken, toPublicUser } from "./auth.js";
 import { config as defaultConfig } from "./config.js";
 import { now } from "./db.js";
@@ -214,11 +215,27 @@ function stemsplitClient(cfg) {
   if (typeof cfg.stemsplitClientFactory === "function") {
     return cfg.stemsplitClientFactory(cfg);
   }
+  // The self-hosted engine takes precedence: same client surface, local GPU.
+  if (cfg.stemEngineUrl) {
+    return new StemEngineClient({ baseUrl: cfg.stemEngineUrl, apiKey: cfg.stemEngineApiKey });
+  }
   if (!cfg.stemsplitApiKey) {
     return null;
   }
   return new StemSplit({ apiKey: cfg.stemsplitApiKey });
 }
+
+function stemProviderConfigured(cfg) {
+  return Boolean(cfg.stemsplitApiKey || cfg.stemEngineUrl);
+}
+
+function stemProviderName(cfg) {
+  return cfg.stemEngineUrl ? "local-engine" : "stemsplit";
+}
+
+// Both real providers (hosted StemSplit and the local engine) share the same
+// job vocabulary and refresh path.
+const REAL_STEM_PROVIDERS = new Set(["stemsplit", "local-engine"]);
 
 const MAX_SOURCE_URL_LENGTH = 2048;
 
@@ -370,7 +387,7 @@ function publicStemOutputs(outputs) {
 }
 
 async function refreshStemSplitJob(store, cfg, job, req = null) {
-  if (!job || job.provider !== "stemsplit" || !job.providerJobId) {
+  if (!job || !REAL_STEM_PROVIDERS.has(job.provider) || !job.providerJobId) {
     return job;
   }
   if (job.status === "completed" || job.status === "failed") {
@@ -381,7 +398,7 @@ async function refreshStemSplitJob(store, cfg, job, req = null) {
   if (!client) {
     return store.update("stemJobs", job.id, {
       status: "failed",
-      errorMessage: "STEMSPLIT_API_KEY is not configured."
+      errorMessage: "No stem provider is configured (set STEM_ENGINE_URL or STEMSPLIT_API_KEY)."
     });
   }
 
@@ -1370,12 +1387,12 @@ export function createApp(overrides = {}) {
         .status(400)
         .json({ error: "Upload audio, select a recording, or paste a link before creating a stem job." });
     }
-    if (!cfg.stemsplitApiKey && !cfg.demoMode) {
+    if (!stemProviderConfigured(cfg) && !cfg.demoMode) {
       req.log?.("error", {
-        eventType: "stemsplit_config_missing",
+        eventType: "stem_provider_config_missing",
         severity: "ERROR",
         outcome: "failure",
-        what: { provider: "stemsplit", demoMode: cfg.demoMode }
+        what: { provider: "none", demoMode: cfg.demoMode }
       });
       return res.status(503).json({ error: "StemSplit is not configured." });
     }
@@ -1383,7 +1400,7 @@ export function createApp(overrides = {}) {
     const job = {
       id: crypto.randomUUID(),
       userId: req.user ? req.user.id : null,
-      provider: cfg.stemsplitApiKey ? "stemsplit" : "demo",
+      provider: stemProviderConfigured(cfg) ? stemProviderName(cfg) : "demo",
       status: "queued",
       progress: 5,
       providerJobId: null,
@@ -1407,13 +1424,13 @@ export function createApp(overrides = {}) {
       keyMatch: req.body.keyMatch !== "false",
       stems: [],
       errorMessage: null,
-      mode: cfg.stemsplitApiKey ? "real" : "demo",
-      diagnostic: cfg.stemsplitApiKey
+      mode: stemProviderConfigured(cfg) ? "real" : "demo",
+      diagnostic: stemProviderConfigured(cfg)
         ? null
-        : "Demo stem preview queued because StemSplit is not configured. Configure STEMSPLIT_API_KEY for real separation.",
+        : "Demo stem preview queued because no stem provider is configured. Set STEM_ENGINE_URL or STEMSPLIT_API_KEY for real separation.",
       createdAt: now(),
       updatedAt: now(),
-      completeAfter: cfg.stemsplitApiKey ? null : new Date(Date.now() + 1800).toISOString()
+      completeAfter: stemProviderConfigured(cfg) ? null : new Date(Date.now() + 1800).toISOString()
     };
 
     // Persist the upload BEFORE the job row or any remote work exists: local
@@ -1548,7 +1565,7 @@ export function createApp(overrides = {}) {
     }
     const previousStatus = job.status;
     const refreshed =
-      job.provider === "stemsplit"
+      REAL_STEM_PROVIDERS.has(job.provider)
         ? await refreshStemSplitJob(store, cfg, job, req)
         : job.provider === "demo"
           ? await refreshDemoStemJob(store, job)
