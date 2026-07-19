@@ -14,7 +14,10 @@ export function signToken(user, jwtSecret) {
     {
       sub: user.id,
       email: user.email,
-      planId: user.planId || "free"
+      planId: user.planId || "free",
+      // Password version at issue time; bumped on every reset so revocation is
+      // exact instead of racing JWT iat's one-second resolution.
+      pwv: user.passwordVersion || 0
     },
     jwtSecret,
     { expiresIn: "14d" }
@@ -72,6 +75,30 @@ export function attachUser(store, jwtSecret, required = false) {
           }
         });
         return res.status(401).json({ error: "Session user was not found." });
+      }
+      // A password reset invalidates every session issued before it; otherwise
+      // a stolen token would keep working for its full 14-day lifetime after
+      // the owner recovered the account. Compared by password VERSION, not
+      // time — JWT iat only has one-second resolution, which would let a token
+      // minted in the same second as the reset survive.
+      if ((payload.pwv || 0) !== (user.passwordVersion || 0)) {
+        req.log?.("session", {
+          eventType: "session_revoked_password_changed",
+          severity: "WARN",
+          outcome: "denied",
+          actor: {
+            userId: user.id,
+            userEmailHash: hashIdentifier(user.email),
+            authenticated: false
+          }
+        });
+        req.log?.("security_threat", {
+          eventType: "stale_token_after_password_reset",
+          severity: "WARN",
+          outcome: "denied",
+          what: { userId: user.id }
+        });
+        return res.status(401).json({ error: "Session expired after a password change. Log in again." });
       }
       req.user = user;
       req.log?.("authentication", {

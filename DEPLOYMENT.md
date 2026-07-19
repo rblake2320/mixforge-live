@@ -113,7 +113,7 @@ After deployment, confirm `/api/health` returns the expected `dataRoot` and `log
 
 - Production refuses to start with the development JWT secret.
 - `/api/readiness` returns `503` until demo mode is off and JWT, HTTPS base URL, writable storage, Stripe, and StemSplit are configured.
-- `/api/diagnostics` reports whether checkout/stem separation are real, demo, or unavailable without exposing secrets.
+- `/api/diagnostics` reports whether checkout/stem separation are real, demo, or unavailable without exposing secrets. In production it requires the `x-admin-token` header (`MIXFORGE_ADMIN_TOKEN`); `/api/health` and `/api/readiness` stay public for platform probes.
 - `/api/logs/taxonomy` exposes the supported log taxonomy. Raw log records stay on disk under `MIXFORGE_LOG_ROOT`.
 - Structured JSONL log databases cover audit, error, security/threat, access/authorization, trace/span, authentication, infrastructure, performance, transaction, change/deployment, dependency, rate limit, gateway, session, data access/query, health, agent decision, tool call, token/cost, quality, and debug/developer categories.
 - API write/auth endpoints are rate limited.
@@ -139,7 +139,7 @@ After deployment, confirm `/api/health` returns the expected `dataRoot` and `log
 4. Set all required environment variables.
 5. Add a Railway Volume or switch `MIXFORGE_DATA_FILE`/`MIXFORGE_UPLOAD_ROOT`/`MIXFORGE_LOG_ROOT` to cloud storage-backed paths before real users.
 6. Confirm `/api/health` is green before testing checkout or recording.
-7. Confirm `/api/diagnostics` reports `logging.ok: true`.
+7. Confirm `/api/diagnostics` reports `logging.ok: true` (send `x-admin-token: $MIXFORGE_ADMIN_TOKEN` — the endpoint is admin-gated in production).
 
 ## Stripe
 

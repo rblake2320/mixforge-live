@@ -52,6 +52,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((r) => server.close(r));
+  await app.locals.logStore.close();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -156,6 +157,43 @@ describe("admin moderation", () => {
       body: JSON.stringify({ status: "banned-forever" })
     });
     assert.equal(res.status, 400);
+  });
+});
+
+describe("diagnostics gating", () => {
+  it("is open in development", async () => {
+    const res = await fetch(`${baseUrl}/api/diagnostics`);
+    assert.equal(res.status, 200);
+  });
+
+  it("requires the admin token in production", async () => {
+    const prodRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mixforge-mod-prod-"));
+    const prodApp = createApp({
+      isProduction: true,
+      dataFile: path.join(prodRoot, "db.json"),
+      uploadRoot: path.join(prodRoot, "uploads"),
+      logRoot: path.join(prodRoot, "logs"),
+      dataRoot: prodRoot,
+      publicDir: path.join(process.cwd(), "public"),
+      jwtSecret: "moderation-prod-secret-32-chars-long!",
+      adminToken: ADMIN_TOKEN,
+      demoMode: false
+    });
+    const prodServer = prodApp.listen(0, "127.0.0.1");
+    await new Promise((r) => prodServer.once("listening", r));
+    const prodUrl = `http://127.0.0.1:${prodServer.address().port}`;
+    try {
+      const anonymous = await fetch(`${prodUrl}/api/diagnostics`);
+      assert.equal(anonymous.status, 401, "production diagnostics must reject anonymous callers");
+      const admin = await fetch(`${prodUrl}/api/diagnostics`, { headers: { "x-admin-token": ADMIN_TOKEN } });
+      assert.equal(admin.status, 200, "production diagnostics must allow the admin");
+      const health = await fetch(`${prodUrl}/api/health`);
+      assert.equal(health.status, 200, "health stays public for platform probes");
+    } finally {
+      await new Promise((r) => prodServer.close(r));
+      await prodApp.locals.logStore.close();
+      fs.rmSync(prodRoot, { recursive: true, force: true });
+    }
   });
 });
 

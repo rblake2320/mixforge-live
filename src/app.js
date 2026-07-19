@@ -8,6 +8,7 @@ import helmet from "helmet";
 import multer from "multer";
 import Stripe from "stripe";
 import { StemSplit, webhooks as stemsplitWebhooks } from "@stemsplit/sdk";
+import { StemEngineClient } from "./stem-engine-client.js";
 import { attachUser, signToken, toPublicUser } from "./auth.js";
 import { config as defaultConfig } from "./config.js";
 import { now } from "./db.js";
@@ -21,7 +22,7 @@ import {
   requestLoggerMiddleware,
   timedDependency
 } from "./logging.js";
-import { evaluateReadiness } from "./readiness.js";
+import { evaluateReadiness, probeStemEngine } from "./readiness.js";
 
 const PLAN_CATALOG = {
   free: {
@@ -214,11 +215,27 @@ function stemsplitClient(cfg) {
   if (typeof cfg.stemsplitClientFactory === "function") {
     return cfg.stemsplitClientFactory(cfg);
   }
+  // The self-hosted engine takes precedence: same client surface, local GPU.
+  if (cfg.stemEngineUrl) {
+    return new StemEngineClient({ baseUrl: cfg.stemEngineUrl, apiKey: cfg.stemEngineApiKey });
+  }
   if (!cfg.stemsplitApiKey) {
     return null;
   }
   return new StemSplit({ apiKey: cfg.stemsplitApiKey });
 }
+
+function stemProviderConfigured(cfg) {
+  return Boolean(cfg.stemsplitApiKey || cfg.stemEngineUrl);
+}
+
+function stemProviderName(cfg) {
+  return cfg.stemEngineUrl ? "local-engine" : "stemsplit";
+}
+
+// Both real providers (hosted StemSplit and the local engine) share the same
+// job vocabulary and refresh path.
+const REAL_STEM_PROVIDERS = new Set(["stemsplit", "local-engine"]);
 
 const MAX_SOURCE_URL_LENGTH = 2048;
 
@@ -370,7 +387,7 @@ function publicStemOutputs(outputs) {
 }
 
 async function refreshStemSplitJob(store, cfg, job, req = null) {
-  if (!job || job.provider !== "stemsplit" || !job.providerJobId) {
+  if (!job || !REAL_STEM_PROVIDERS.has(job.provider) || !job.providerJobId) {
     return job;
   }
   if (job.status === "completed" || job.status === "failed") {
@@ -381,7 +398,7 @@ async function refreshStemSplitJob(store, cfg, job, req = null) {
   if (!client) {
     return store.update("stemJobs", job.id, {
       status: "failed",
-      errorMessage: "STEMSPLIT_API_KEY is not configured."
+      errorMessage: "No stem provider is configured (set STEM_ENGINE_URL or STEMSPLIT_API_KEY)."
     });
   }
 
@@ -411,6 +428,11 @@ export function createApp(overrides = {}) {
 
   const store = overrides.store || createStore(cfg);
   const storage = overrides.storage || createStorage(cfg);
+  // One Stripe client per app, with an explicit network timeout and retries so
+  // a hung Stripe call can never hold a request open indefinitely.
+  const stripe = cfg.stripeSecretKey
+    ? new Stripe(cfg.stripeSecretKey, { timeout: 30_000, maxNetworkRetries: 2 })
+    : null;
   const logStore =
     overrides.logStore ||
     new JsonlLogStore({
@@ -475,6 +497,12 @@ export function createApp(overrides = {}) {
       crossOriginEmbedderPolicy: false
     })
   );
+  // Helmet does not set Permissions-Policy. The recorder needs the microphone
+  // on this origin; every other powerful feature is explicitly denied.
+  app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "microphone=(self), camera=(), geolocation=(), payment=(), usb=()");
+    next();
+  });
   app.use(
     cors({
       origin(origin, cb) {
@@ -502,7 +530,6 @@ export function createApp(overrides = {}) {
         return res.status(501).json({ error: "Stripe webhook is not configured." });
       }
 
-      const stripe = new Stripe(cfg.stripeSecretKey);
       let event;
       try {
         event = stripe.webhooks.constructEvent(req.body, req.get("stripe-signature"), cfg.stripeWebhookSecret);
@@ -677,7 +704,7 @@ export function createApp(overrides = {}) {
     })
   );
   app.use(
-    ["/api/recordings", "/api/stems/jobs", "/api/billing/checkout", "/api/reports", "/api/dmca"],
+    ["/api/recordings", "/api/stems/jobs", "/api/billing/checkout", "/api/reports", "/api/dmca", "/api/contact"],
     buildLimiter({
       windowMs: writeWindowMs,
       limit: writeLimit,
@@ -743,9 +770,10 @@ export function createApp(overrides = {}) {
     });
     res.status(ok ? 200 : 503).json({
       ok,
-      service: "mixforge-backend",
-      version: "0.1.0",
-      storage: "local-json",
+      service: cfg.serviceName,
+      version: cfg.serviceVersion,
+      store: store.kind,
+      uploads: storage.kind,
       checks: { store: storeOk, logging: logging.ok },
       dataRoot: cfg.dataRoot,
       logRoot: cfg.logRoot,
@@ -753,8 +781,21 @@ export function createApp(overrides = {}) {
     });
   });
 
-  app.get("/api/readiness", (req, res) => {
+  // Static config checks plus, when the local engine is configured, a live
+  // reachability probe — a dead tunnel must flip readiness, not wait for a
+  // user's job to fail.
+  async function readinessWithLiveChecks() {
     const readiness = evaluateReadiness(cfg);
+    const engineCheck = await probeStemEngine(cfg);
+    if (engineCheck) {
+      readiness.checks.push(engineCheck);
+      readiness.ready = readiness.checks.filter((check) => check.required).every((check) => check.ok);
+    }
+    return readiness;
+  }
+
+  app.get("/api/readiness", async (req, res) => {
+    const readiness = await readinessWithLiveChecks();
     req.log?.("health_check_heartbeat", {
       eventType: "readiness_check_requested",
       severity: readiness.ready ? "INFO" : "WARN",
@@ -768,9 +809,13 @@ export function createApp(overrides = {}) {
     res.status(readiness.ready ? 200 : 503).json(readiness);
   });
 
-  app.get("/api/diagnostics", (req, res) => {
+  // Diagnostics enumerate config state (which providers are configured, storage
+  // paths, failed checks) — useful to operators, reconnaissance to anyone else.
+  // Public in development; admin-only in production.
+  const diagnosticsGuard = cfg.isProduction ? requireAdmin : (_req, _res, next) => next();
+  app.get("/api/diagnostics", diagnosticsGuard, async (req, res) => {
     const diagnostics = {
-      ...evaluateReadiness(cfg),
+      ...(await readinessWithLiveChecks()),
       logging: logStore.health(),
       logTaxonomy: LOG_TYPES
     };
@@ -823,7 +868,8 @@ export function createApp(overrides = {}) {
         });
         return res.status(400).json({ error: "A valid email is required." });
       }
-      if (password.length < 6) {
+      // NIST SP 800-63B-4 minimum for user-chosen passwords.
+      if (password.length < 8) {
         req.log?.("security_threat", {
           eventType: "input_validation_failed_signup_password",
           severity: "WARN",
@@ -831,7 +877,7 @@ export function createApp(overrides = {}) {
           actor: { userId: null, userEmailHash: hashIdentifier(email), authenticated: false },
           what: { field: "password", reason: "too_short" }
         });
-        return res.status(400).json({ error: "Password must be at least 6 characters." });
+        return res.status(400).json({ error: "Password must be at least 8 characters." });
       }
       if (await store.findBy("users", "email", email)) {
         req.log?.("authentication", {
@@ -1028,8 +1074,8 @@ export function createApp(overrides = {}) {
     try {
       const token = typeof req.body.token === "string" ? req.body.token.trim() : "";
       const password = req.body.password;
-      if (typeof password !== "string" || password.length < 6) {
-        return res.status(400).json({ error: "Password must be at least 6 characters." });
+      if (typeof password !== "string" || password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters." });
       }
       const record = token ? await store.findBy("passwordResets", "token", token) : null;
       if (!record || record.usedAt || Date.parse(record.expiresAt) < Date.now()) {
@@ -1045,7 +1091,14 @@ export function createApp(overrides = {}) {
       if (!user) {
         return res.status(400).json({ error: "Invalid or expired reset token." });
       }
-      await store.update("users", user.id, { passwordHash: await bcrypt.hash(password, 12) });
+      await store.update("users", user.id, {
+        passwordHash: await bcrypt.hash(password, 12),
+        // Bumping the version revokes every session issued before the reset
+        // (attachUser compares it against the token's pwv claim); the timestamp
+        // is kept for the audit trail.
+        passwordVersion: (user.passwordVersion || 0) + 1,
+        passwordChangedAt: now()
+      });
       await store.update("passwordResets", record.id, { usedAt: now() });
       req.log?.("audit", {
         eventType: "password_reset_completed",
@@ -1105,6 +1158,11 @@ export function createApp(overrides = {}) {
     }
 
     const activeBeat = req.body.beatId ? await store.findById("beats", req.body.beatId) : null;
+    // Hand the multer temp file to the storage backend. Local storage keeps it
+    // in place; S3 uploads it and deletes the local copy — without this call
+    // S3 mode would serve pre-signed URLs to objects that were never uploaded.
+    const uploadedPath = path.relative(cfg.uploadRoot, req.file.path).replaceAll("\\", "/");
+    const persistedPath = await storage.persist(req.file.path, uploadedPath);
     const recording = {
       id: crypto.randomUUID(),
       userId: req.user ? req.user.id : null,
@@ -1115,7 +1173,7 @@ export function createApp(overrides = {}) {
       mimeType: req.file.mimetype || "application/octet-stream",
       sizeBytes: req.file.size,
       durationSeconds: Number(req.body.durationSeconds || 0),
-      filePath: path.relative(cfg.uploadRoot, req.file.path).replaceAll("\\", "/"),
+      filePath: persistedPath,
       moderationStatus: "active",
       createdAt: now(),
       updatedAt: now()
@@ -1147,7 +1205,9 @@ export function createApp(overrides = {}) {
 
   app.get("/api/recordings", optionalUser, async (req, res, next) => {
     try {
-      const rows = req.user ? await store.listByOwner("recordings", req.user.id) : await store.list("recordings");
+      // Anonymous callers only ever see ownerless (anonymous) rows; listing
+      // every user's recordings without a session was a metadata leak.
+      const rows = await store.listByOwner("recordings", req.user ? req.user.id : null);
       const recordings = rows.map(publicRecording);
       req.log?.("data_access_query", {
         eventType: "recordings_list_read",
@@ -1268,7 +1328,7 @@ export function createApp(overrides = {}) {
 
   app.get("/api/projects", optionalUser, async (req, res, next) => {
     try {
-      const projects = req.user ? await store.listByOwner("projects", req.user.id) : await store.list("projects");
+      const projects = await store.listByOwner("projects", req.user ? req.user.id : null);
       req.log?.("data_access_query", {
         eventType: "projects_list_read",
         severity: "INFO",
@@ -1340,12 +1400,12 @@ export function createApp(overrides = {}) {
         .status(400)
         .json({ error: "Upload audio, select a recording, or paste a link before creating a stem job." });
     }
-    if (!cfg.stemsplitApiKey && !cfg.demoMode) {
+    if (!stemProviderConfigured(cfg) && !cfg.demoMode) {
       req.log?.("error", {
-        eventType: "stemsplit_config_missing",
+        eventType: "stem_provider_config_missing",
         severity: "ERROR",
         outcome: "failure",
-        what: { provider: "stemsplit", demoMode: cfg.demoMode }
+        what: { provider: "none", demoMode: cfg.demoMode }
       });
       return res.status(503).json({ error: "StemSplit is not configured." });
     }
@@ -1353,7 +1413,7 @@ export function createApp(overrides = {}) {
     const job = {
       id: crypto.randomUUID(),
       userId: req.user ? req.user.id : null,
-      provider: cfg.stemsplitApiKey ? "stemsplit" : "demo",
+      provider: stemProviderConfigured(cfg) ? stemProviderName(cfg) : "demo",
       status: "queued",
       progress: 5,
       providerJobId: null,
@@ -1377,15 +1437,22 @@ export function createApp(overrides = {}) {
       keyMatch: req.body.keyMatch !== "false",
       stems: [],
       errorMessage: null,
-      mode: cfg.stemsplitApiKey ? "real" : "demo",
-      diagnostic: cfg.stemsplitApiKey
+      mode: stemProviderConfigured(cfg) ? "real" : "demo",
+      diagnostic: stemProviderConfigured(cfg)
         ? null
-        : "Demo stem preview queued because StemSplit is not configured. Configure STEMSPLIT_API_KEY for real separation.",
+        : "Demo stem preview queued because no stem provider is configured. Set STEM_ENGINE_URL or STEMSPLIT_API_KEY for real separation.",
       createdAt: now(),
       updatedAt: now(),
-      completeAfter: cfg.stemsplitApiKey ? null : new Date(Date.now() + 1800).toISOString()
+      completeAfter: stemProviderConfigured(cfg) ? null : new Date(Date.now() + 1800).toISOString()
     };
 
+    // Persist the upload BEFORE the job row or any remote work exists: local
+    // storage is a no-op, S3 uploads the object and removes the temp file. A
+    // persist failure (e.g. S3 outage) therefore aborts cleanly with no
+    // half-created state to reconcile.
+    if (req.file) {
+      await storage.persist(req.file.path, job.sourceFilePath);
+    }
     await store.insert("stemJobs", job);
     req.log?.("audit", {
       eventType: "stem_job_created",
@@ -1416,10 +1483,27 @@ export function createApp(overrides = {}) {
 
     const client = stemsplitClient(cfg);
     try {
-      const rawRemote = await timedDependency(req, "stemsplit", `${sourceKind}.create`, () =>
-        stemJobCreateCall(client, sourceKind, {
-          sourcePath,
-          sourceUrl,
+      // Choose how StemSplit fetches the source. Anything persisted to object
+      // storage no longer exists on local disk, so it is handed over as a
+      // time-limited signed URL; local storage keeps the file on disk and the
+      // SDK uploads it directly.
+      let submitKind = sourceKind;
+      let submitUrl = sourceUrl;
+      let submitPath = null;
+      if (sourceKind === "file") {
+        const relativeSource = req.file ? job.sourceFilePath : recording?.filePath || null;
+        const remoteUrl = relativeSource ? await storage.signedSourceUrl(relativeSource) : null;
+        if (remoteUrl) {
+          submitKind = "url";
+          submitUrl = remoteUrl;
+        } else {
+          submitPath = req.file ? req.file.path : sourcePath;
+        }
+      }
+      const rawRemote = await timedDependency(req, "stemsplit", `${submitKind}.create`, () =>
+        stemJobCreateCall(client, submitKind, {
+          sourcePath: submitPath,
+          sourceUrl: submitUrl,
           metadata: {
             mixforgeJobId: job.id,
             userId: job.userId,
@@ -1494,7 +1578,7 @@ export function createApp(overrides = {}) {
     }
     const previousStatus = job.status;
     const refreshed =
-      job.provider === "stemsplit"
+      REAL_STEM_PROVIDERS.has(job.provider)
         ? await refreshStemSplitJob(store, cfg, job, req)
         : job.provider === "demo"
           ? await refreshDemoStemJob(store, job)
@@ -1600,8 +1684,7 @@ export function createApp(overrides = {}) {
             "Configure STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and the Stripe price IDs to open real Checkout."
         });
       }
-      if (cfg.stripeSecretKey && priceId) {
-        const stripe = new Stripe(cfg.stripeSecretKey);
+      if (stripe && priceId) {
         const checkoutSession = {
           mode: "subscription",
           line_items: [{ price: priceId, quantity: 1 }],
@@ -1701,7 +1784,7 @@ export function createApp(overrides = {}) {
 
   function requireAdmin(req, res, next) {
     if (!cfg.adminToken) {
-      return res.status(503).json({ error: "Moderation is not configured. Set MIXFORGE_ADMIN_TOKEN." });
+      return res.status(503).json({ error: "Admin access is not configured. Set MIXFORGE_ADMIN_TOKEN." });
     }
     const provided = req.get("x-admin-token") || "";
     // Constant-time compare to avoid leaking the token via timing.

@@ -82,13 +82,15 @@ function allStripeValuesConfigured(cfg) {
   );
 }
 
-function allStemSplitValuesConfigured(cfg) {
-  return Boolean(cfg.stemsplitApiKey && cfg.stemsplitWebhookSecret);
+function stemSeparationConfigured(cfg) {
+  // Either the hosted provider (key + webhook secret) or the self-hosted
+  // local engine (URL) satisfies the stem-separation requirement.
+  return Boolean((cfg.stemsplitApiKey && cfg.stemsplitWebhookSecret) || cfg.stemEngineUrl);
 }
 
 export function evaluateReadiness(cfg) {
   const stripeConfigured = allStripeValuesConfigured(cfg);
-  const stemsplitConfigured = allStemSplitValuesConfigured(cfg);
+  const stemsplitConfigured = stemSeparationConfigured(cfg);
   const checks = [
     {
       id: "jwt_secret",
@@ -148,7 +150,9 @@ export function evaluateReadiness(cfg) {
       label: "StemSplit API and webhook are configured",
       required: true,
       ok: stemsplitConfigured,
-      detail: stemsplitConfigured ? "Configured" : "Set STEMSPLIT_API_KEY and STEMSPLIT_WEBHOOK_SECRET"
+      detail: stemsplitConfigured
+        ? "Configured"
+        : "Set STEM_ENGINE_URL (local engine) or STEMSPLIT_API_KEY and STEMSPLIT_WEBHOOK_SECRET (hosted)"
     }
   ];
 
@@ -163,12 +167,54 @@ export function evaluateReadiness(cfg) {
     capabilities: {
       auth: "real",
       recording: "real",
-      fileStorage: "local-json-and-files",
+      // Mirrors the exact selection precedence of createStore/createStorage
+      // (explicit backend override wins over credential presence) so readiness
+      // never reports a backend the factories would not actually pick.
+      store: cfg.storeBackend || (cfg.databaseUrl ? "postgres" : "json"),
+      fileStorage: cfg.storageBackend || (cfg.s3Bucket ? "s3" : "local"),
       checkout: stripeConfigured ? "stripe" : cfg.demoMode ? "demo-disabled-payment" : "unavailable",
-      stemSeparation: stemsplitConfigured ? "stemsplit" : cfg.demoMode ? "demo-preview" : "unavailable"
+      stemSeparation: cfg.stemEngineUrl
+        ? "local-engine"
+        : stemsplitConfigured
+          ? "stemsplit"
+          : cfg.demoMode
+            ? "demo-preview"
+            : "unavailable"
     },
     checks
   };
+}
+
+// Live reachability probe for the self-hosted stem engine. A configured-but-
+// unreachable engine (dead tunnel, stopped service) must surface in readiness
+// so monitoring sees it before a user's job fails.
+export async function probeStemEngine(cfg) {
+  if (!cfg.stemEngineUrl) {
+    return null;
+  }
+  try {
+    const response = await fetch(`${cfg.stemEngineUrl.replace(/\/+$/, "")}/health`, {
+      signal: AbortSignal.timeout(2500)
+    });
+    const body = await response.json().catch(() => ({}));
+    return {
+      id: "stem_engine_reachable",
+      label: "Local stem engine answers its health check",
+      required: Boolean(cfg.isProduction),
+      ok: response.ok && body.ok === true,
+      detail: response.ok
+        ? `${cfg.stemEngineUrl} (${body.model || "unknown model"}, cuda: ${body.cudaAvailable})`
+        : `${cfg.stemEngineUrl} responded ${response.status}`
+    };
+  } catch (error) {
+    return {
+      id: "stem_engine_reachable",
+      label: "Local stem engine answers its health check",
+      required: Boolean(cfg.isProduction),
+      ok: false,
+      detail: `${cfg.stemEngineUrl} unreachable: ${error.message}`
+    };
+  }
 }
 
 export function assertMinimumProductionConfig(cfg) {

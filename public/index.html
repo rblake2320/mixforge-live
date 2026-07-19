@@ -4,6 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MixForge — Make Your Sound</title>
+<meta name="description" content="Record vocals, remix songs, swap beats, and add autotune — no experience needed. Pro tools built in when you're ready: stem separation, mashups, and DJ mode.">
+<link rel="canonical" href="https://mixforge.live/">
+<meta name="theme-color" content="#7c5cfc">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="MixForge">
+<meta property="og:title" content="MixForge — Make Your Sound">
+<meta property="og:description" content="Record vocals, remix songs, swap beats, and add autotune — no experience needed.">
+<meta property="og:url" content="https://mixforge.live/">
+<meta property="og:image" content="https://user-gen-media-assets.s3.amazonaws.com/gpt4o_images/f1eceff1-fb99-483e-acfe-e298f122e2ee.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MixForge — Make Your Sound">
+<meta name="twitter:description" content="Record vocals, remix songs, swap beats, and add autotune — no experience needed.">
+<meta name="twitter:image" content="https://user-gen-media-assets.s3.amazonaws.com/gpt4o_images/f1eceff1-fb99-483e-acfe-e298f122e2ee.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -208,6 +223,9 @@ a { color: inherit; text-decoration: none; }
   padding-top: var(--space-16);
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-16); align-items: center;
 }
+/* min-width:0 lets the CTA row wrap inside the track instead of widening it
+   past the viewport on narrow screens. */
+.hero-content > * { min-width: 0; }
 .hero-badge {
   display: inline-flex; align-items: center; gap: var(--space-2);
   padding: var(--space-1) var(--space-4); border-radius: var(--radius-full);
@@ -407,7 +425,7 @@ a { color: inherit; text-decoration: none; }
 .section-title { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; margin-bottom: var(--space-4); }
 .section-desc { font-size: var(--text-lg); color: var(--color-text-muted); max-width: 52ch; line-height: 1.7; margin-bottom: var(--space-10); }
 
-.studio-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-8); border-bottom: 1px solid var(--color-divider); }
+.studio-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); border-bottom: 1px solid var(--color-divider); }
 .studio-tab {
   padding: var(--space-3) var(--space-5); font-size: var(--text-sm); font-weight: 600;
   color: var(--color-text-muted); cursor: pointer; border: none; background: none;
@@ -427,6 +445,9 @@ a { color: inherit; text-decoration: none; }
   border-radius: var(--radius-2xl); padding: var(--space-8);
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-8);
 }
+/* Grid children default to min-width:auto, which lets long content push the
+   track wider than the viewport on narrow screens. */
+.vocal-booth > * { min-width: 0; }
 .booth-left { display: flex; flex-direction: column; gap: var(--space-5); }
 .booth-beat-select {
   background: var(--color-surface-2); border: 1px solid var(--color-border);
@@ -436,7 +457,7 @@ a { color: inherit; text-decoration: none; }
   padding: var(--space-4); display: flex; justify-content: space-between; align-items: center;
   border-bottom: 1px solid var(--color-divider);
 }
-.booth-beat-header h4 { font-weight: 600; font-size: var(--text-sm); }
+.booth-beat-header h3 { font-weight: 600; font-size: var(--text-sm); }
 .beat-list { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); max-height: 200px; overflow-y: auto; }
 .beat-item {
   display: flex; align-items: center; gap: var(--space-3);
@@ -457,7 +478,7 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface-2); border: 1px solid var(--color-border);
   border-radius: var(--radius-xl); padding: var(--space-5);
 }
-.autotune-panel h4 { font-weight: 600; font-size: var(--text-sm); margin-bottom: var(--space-4); }
+.autotune-panel h3 { font-weight: 600; font-size: var(--text-sm); margin-bottom: var(--space-4); }
 .autotune-presets { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .preset-btn {
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-lg);
@@ -762,7 +783,7 @@ a { color: inherit; text-decoration: none; }
 .footer-brand { }
 .footer-logo { display: flex; align-items: center; gap: var(--space-2); font-weight: 700; font-size: var(--text-lg); margin-bottom: var(--space-4); }
 .footer-desc { font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.7; max-width: 32ch; }
-.footer-col h5 { font-size: var(--text-sm); font-weight: 700; margin-bottom: var(--space-4); }
+.footer-col .footer-heading { font-size: var(--text-sm); font-weight: 700; margin-bottom: var(--space-4); }
 .footer-links { display: flex; flex-direction: column; gap: var(--space-3); }
 .footer-links a { font-size: var(--text-sm); color: var(--color-text-muted); transition: color var(--transition); }
 .footer-links a:hover { color: var(--color-text); }
@@ -793,8 +814,16 @@ a { color: inherit; text-decoration: none; }
   .pricing-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
+  /* The hamburger is the primary navigation on phones — nothing in the header
+     may push it off-screen. Fixed-width items keep flex-shrink:0 and the
+     lower-priority items (CTA, status pill) drop out as width shrinks. */
+  .nav { padding-inline: var(--space-4); }
   .nav-links, .nav-actions .btn-ghost { display: none; }
-  .hamburger { display: flex; }
+  .hamburger { display: flex; flex-shrink: 0; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .nav-logo { flex-shrink: 0; }
+  .theme-toggle { width: 44px; height: 44px; flex-shrink: 0; }
+  /* 44px minimum touch targets on coarse-pointer layouts. */
+  .play-mini, .deck-btn, .ctrl-btn { width: 44px; height: 44px; }
   .hero-content { grid-template-columns: 1fr; }
   .hero-visual { display: none; }
   .modes-grid { grid-template-columns: 1fr; }
@@ -809,10 +838,18 @@ a { color: inherit; text-decoration: none; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .footer-bottom { flex-direction: column; gap: var(--space-3); text-align: center; }
 }
+@media (max-width: 640px) {
+  /* Start Free lives prominently in the mobile menu; keeping it in the header
+     was what clipped the hamburger off-screen on phones. */
+  .nav .nav-actions .btn-primary { display: none; }
+}
 @media (max-width: 480px) {
   .features-grid { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr; }
   .hero-title { font-size: clamp(2.2rem, 8vw, 3.5rem); }
+  /* The injected API status pill is diagnostic, not navigation — drop it
+     before it can crowd the hamburger on the narrowest screens. */
+  .nav .api-pill { display: none; }
 }
 
 /* Scrollbar */
@@ -829,7 +866,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
 
 <!-- NAV -->
 <nav class="nav" id="nav">
-  <a href="#" class="nav-logo">
+  <a href="/" class="nav-logo">
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-label="MixForge logo">
       <rect width="28" height="28" rx="8" fill="#7c5cfc"/>
       <path d="M7 20 L11 8 L15 16 L17 12 L21 20" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
@@ -863,7 +900,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
       <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="8" fill="#7c5cfc"/><path d="M7 20 L11 8 L15 16 L17 12 L21 20" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="21" cy="10" r="2.5" fill="#00d4ff"/></svg>
       <span><span class="logo-text-mix">Mix</span><span class="logo-text-forge">Forge</span></span>
     </div>
-    <button id="closeNav" style="font-size:24px;color:var(--color-text);">✕</button>
+    <button id="closeNav" aria-label="Close menu" style="font-size:24px;color:var(--color-text);">✕</button>
   </div>
   <nav class="mobile-nav-links">
     <a href="#modes" onclick="closeMobileNav()">Modes</a>
@@ -877,6 +914,8 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
     <a href="#" class="btn btn-primary btn-lg">Start Free</a>
   </div>
 </div>
+
+<main id="main">
 
 <!-- HERO -->
 <section class="hero">
@@ -900,7 +939,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
         <div class="avatar-stack">
           <span>🎤</span><span>🎧</span><span>🎹</span><span>🎸</span>
         </div>
-        <p class="social-text"><strong>Join thousands</strong> already making mixes today</p>
+        <p class="social-text"><strong>Join the first wave</strong> of creators making mixes today</p>
       </div>
     </div>
     <div class="hero-visual">
@@ -935,25 +974,25 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
           </div>
         </div>
         <div class="player-controls">
-          <button class="ctrl-btn" title="Shuffle">
+          <button class="ctrl-btn" title="Shuffle" aria-label="Shuffle">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
           </button>
-          <button class="ctrl-btn" title="Previous">
+          <button class="ctrl-btn" title="Previous" aria-label="Previous track">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
           </button>
-          <button class="play-btn" id="heroPlay" onclick="togglePlay()" title="Play/Pause">
+          <button class="play-btn" id="heroPlay" onclick="togglePlay()" title="Play/Pause" aria-label="Play or pause">
             <svg id="heroPlayIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>
-          <button class="ctrl-btn" title="Next">
+          <button class="ctrl-btn" title="Next" aria-label="Next track">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
           </button>
-          <button class="ctrl-btn" title="Repeat">
+          <button class="ctrl-btn" title="Repeat" aria-label="Repeat">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
           </button>
         </div>
         <div class="volume-section">
           <div class="volume-label" style="font-size:var(--text-xs);color:var(--color-text-muted);">VOL</div>
-          <input type="range" class="volume-slider" min="0" max="100" value="75">
+          <input type="range" class="volume-slider" min="0" max="100" value="75" aria-label="Playback volume">
         </div>
         <div class="autotune-row">
           <span class="autotune-label">Autotune</span>
@@ -980,7 +1019,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
         <li class="mode-feature">One-tap autotune presets</li>
         <li class="mode-feature">Simple mashup creator</li>
         <li class="mode-feature">Share to social instantly</li>
-        <li class="mode-feature">Beat library (500+ tracks)</li>
+        <li class="mode-feature">Growing beat library</li>
       </ul>
     </div>
     <div class="mode-card mode-creator" onclick="selectMode(this)">
@@ -1041,7 +1080,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
         <div class="booth-left">
           <div class="booth-beat-select">
             <div class="booth-beat-header">
-              <h4>Choose a Beat</h4>
+              <h3>Choose a Beat</h3>
               <button class="btn btn-secondary" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Browse All</button>
             </div>
             <div class="beat-list">
@@ -1073,7 +1112,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
             </div>
           </div>
           <div class="autotune-panel">
-            <h4>Pitch Correction Style</h4>
+            <h3>Pitch Correction Style</h3>
             <div class="autotune-presets">
               <button class="preset-btn active" onclick="selectPreset(this)">Natural</button>
               <button class="preset-btn" onclick="selectPreset(this)">Trap Tune</button>
@@ -1086,17 +1125,17 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
         </div>
         <div class="booth-right">
           <div class="record-zone">
-            <div class="record-btn-outer" id="recordBtn" onclick="toggleRecord()">
-              <div class="record-btn-inner">
-                <svg id="recordIcon" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23" stroke="white" stroke-width="2"/></svg>
-              </div>
-            </div>
+            <button type="button" class="record-btn-outer" id="recordBtn" onclick="toggleRecord()" aria-label="Start or stop recording">
+              <span class="record-btn-inner">
+                <svg id="recordIcon" width="24" height="24" viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23" stroke="white" stroke-width="2"/></svg>
+              </span>
+            </button>
             <div class="record-label" id="recordLabel">Tap to Record</div>
             <div class="record-timer" id="recordTimer">0:00</div>
             <div class="record-status" id="recordStatus">Make sure your mic is allowed</div>
             <div class="voice-level" style="width:80%;"><div class="voice-level-fill" id="voiceLevel"></div></div>
           </div>
-          <div style="display:flex;gap:var(--space-3);">
+          <div style="display:flex;flex-wrap:wrap;gap:var(--space-3);">
             <button class="btn btn-secondary" style="flex:1;" disabled id="playbackBtn">▶ Play Back</button>
             <button class="btn btn-secondary" style="flex:1;" disabled id="saveBtn">💾 Save Take</button>
           </div>
@@ -1115,7 +1154,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
         <div class="mashup-tracks">
           <div class="mashup-track-card">
             <div class="mashup-track-label track-a-label">Track A — Vocals From</div>
-            <select class="track-select">
+            <select class="track-select" aria-label="Track A vocal source">
               <option>Pick a Song or Upload...</option>
               <option>Artist Vocal Example 1</option>
               <option>Artist Vocal Example 2</option>
@@ -1130,7 +1169,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
           <div class="mashup-plus">+</div>
           <div class="mashup-track-card">
             <div class="mashup-track-label track-b-label">Track B — Beat From</div>
-            <select class="track-select">
+            <select class="track-select" aria-label="Track B beat source">
               <option>Pick a Beat or Upload...</option>
               <option>Classic Hip Hop Beat Vol.1</option>
               <option>Trap Instrumental Pack</option>
@@ -1181,13 +1220,13 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
               <span class="key-badge">Am</span>
             </div>
             <div class="deck-controls">
-              <button class="deck-btn deck-btn-cue" title="Cue">◀</button>
-              <button class="deck-btn deck-btn-play" onclick="toggleDeckPlay('A',this)" title="Play/Pause">▶</button>
-              <button class="deck-btn deck-btn-cue" title="Loop">⟳</button>
+              <button class="deck-btn deck-btn-cue" title="Cue" aria-label="Deck A cue">◀</button>
+              <button class="deck-btn deck-btn-play" onclick="toggleDeckPlay('A',this)" title="Play/Pause" aria-label="Deck A play or pause">▶</button>
+              <button class="deck-btn deck-btn-cue" title="Loop" aria-label="Deck A loop">⟳</button>
             </div>
             <div class="pitch-slider-wrap">
               <span>-8%</span>
-              <input type="range" class="pitch-slider" min="-8" max="8" value="0" step="0.1">
+              <input type="range" class="pitch-slider" min="-8" max="8" value="0" step="0.1" aria-label="Deck A pitch">
               <span>+8%</span>
             </div>
           </div>
@@ -1195,13 +1234,13 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
           <!-- Mixer -->
           <div class="mixer-panel">
             <div class="mixer-eq">
-              <div class="eq-row"><span class="eq-label">HI</span><input type="range" class="eq-slider" min="0" max="100" value="60"><span class="eq-label">HI</span></div>
-              <div class="eq-row"><span class="eq-label">MID</span><input type="range" class="eq-slider" min="0" max="100" value="60"><span class="eq-label">MID</span></div>
-              <div class="eq-row"><span class="eq-label">LO</span><input type="range" class="eq-slider" min="0" max="100" value="60"><span class="eq-label">LO</span></div>
+              <div class="eq-row"><span class="eq-label">HI</span><input type="range" class="eq-slider" min="0" max="100" value="60" aria-label="High EQ"><span class="eq-label">HI</span></div>
+              <div class="eq-row"><span class="eq-label">MID</span><input type="range" class="eq-slider" min="0" max="100" value="60" aria-label="Mid EQ"><span class="eq-label">MID</span></div>
+              <div class="eq-row"><span class="eq-label">LO</span><input type="range" class="eq-slider" min="0" max="100" value="60" aria-label="Low EQ"><span class="eq-label">LO</span></div>
             </div>
             <div class="crossfader-section">
               <div class="crossfader-label"><span>A</span><span>B</span></div>
-              <input type="range" class="crossfader" min="0" max="100" value="50">
+              <input type="range" class="crossfader" min="0" max="100" value="50" aria-label="Crossfader between deck A and deck B">
             </div>
             <div class="effects-row">
               <button class="fx-btn active" onclick="this.classList.toggle('active')">Echo</button>
@@ -1226,13 +1265,13 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
               <span class="key-badge">Cmaj</span>
             </div>
             <div class="deck-controls">
-              <button class="deck-btn deck-btn-cue" title="Cue">◀</button>
-              <button class="deck-btn deck-btn-play" onclick="toggleDeckPlay('B',this)" title="Play/Pause">▶</button>
-              <button class="deck-btn deck-btn-cue" title="Loop">⟳</button>
+              <button class="deck-btn deck-btn-cue" title="Cue" aria-label="Deck B cue">◀</button>
+              <button class="deck-btn deck-btn-play" onclick="toggleDeckPlay('B',this)" title="Play/Pause" aria-label="Deck B play or pause">▶</button>
+              <button class="deck-btn deck-btn-cue" title="Loop" aria-label="Deck B loop">⟳</button>
             </div>
             <div class="pitch-slider-wrap">
               <span>-8%</span>
-              <input type="range" class="pitch-slider" min="-8" max="8" value="0" step="0.1">
+              <input type="range" class="pitch-slider" min="-8" max="8" value="0" step="0.1" aria-label="Deck B pitch">
               <span>+8%</span>
             </div>
           </div>
@@ -1331,7 +1370,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
           <li class="plan-feature"><span class="check">✓</span> Everything in Free</li>
           <li class="plan-feature"><span class="check">✓</span> AI stem separation (20/mo)</li>
           <li class="plan-feature"><span class="check">✓</span> Multi-track projects</li>
-          <li class="plan-feature"><span class="check">✓</span> 500+ beat library</li>
+          <li class="plan-feature"><span class="check">✓</span> Full beat library access</li>
           <li class="plan-feature"><span class="check">✓</span> Beat store + selling</li>
           <li class="plan-feature"><span class="check">✓</span> Collaboration sessions</li>
           <li class="plan-feature"><span class="x">✗</span> DJ Mode</li>
@@ -1378,7 +1417,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
     <div class="container--narrow" style="padding-inline:0;margin-bottom:var(--space-10);">
       <div class="section-label">Community</div>
       <h2 class="section-title">Hear what people are making.</h2>
-      <p class="section-desc">Real tracks from real creators — remixes, vocal takes, mashups, and beats.</p>
+      <p class="section-desc">Sample tracks showing what you can build — remixes, vocal takes, mashups, and beats. Your creations join the feed at launch.</p>
     </div>
     <div class="community-grid">
       <div class="community-card">
@@ -1395,7 +1434,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
               <span style="height:60%"></span><span style="height:100%"></span><span style="height:40%"></span><span style="height:80%"></span><span style="height:55%"></span><span style="height:90%"></span><span style="height:35%"></span><span style="height:70%"></span><span style="height:50%"></span><span style="height:85%"></span>
             </div>
           </div>
-          <button class="play-mini">▶</button>
+          <button class="play-mini" aria-label="Play Late Night Feelings">▶</button>
         </div>
         <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-1);">Late Night Feelings</div>
         <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);">R&B Vocal + Guitar R&B Beat • Trap Tune preset</div>
@@ -1420,7 +1459,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
               <span style="height:80%"></span><span style="height:45%"></span><span style="height:100%"></span><span style="height:60%"></span><span style="height:75%"></span><span style="height:30%"></span><span style="height:95%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:40%"></span>
             </div>
           </div>
-          <button class="play-mini">▶</button>
+          <button class="play-mini" aria-label="Play Club Rotation Mix Vol.3">▶</button>
         </div>
         <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-1);">Club Rotation Mix Vol.3</div>
         <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);">DJ Mix • 47 minutes • Built in DJ Mode</div>
@@ -1445,7 +1484,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
               <span style="height:50%"></span><span style="height:85%"></span><span style="height:30%"></span><span style="height:100%"></span><span style="height:45%"></span><span style="height:70%"></span><span style="height:55%"></span><span style="height:90%"></span><span style="height:35%"></span><span style="height:60%"></span>
             </div>
           </div>
-          <button class="play-mini">▶</button>
+          <button class="play-mini" aria-label="Play Midnight Trap Beat">▶</button>
         </div>
         <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-1);">Midnight Trap Beat</div>
         <div style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-3);">Beat Pack Preview • $9.99 on MixForge</div>
@@ -1476,6 +1515,8 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
   </div>
 </section>
 
+</main>
+
 <!-- FOOTER -->
 <footer class="footer">
   <div class="container">
@@ -1488,43 +1529,39 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12p
         <p class="footer-desc">Make music your way. For everyday creators, artists, and DJs — all in one place.</p>
       </div>
       <div class="footer-col">
-        <h5>Product</h5>
+        <h3 class="footer-heading">Product</h3>
         <div class="footer-links">
-          <a href="#">Everyday Mode</a>
-          <a href="#">Creator Mode</a>
-          <a href="#">DJ Mode</a>
-          <a href="#">Beat Marketplace</a>
-          <a href="#">Pricing</a>
+          <a href="#modes">Everyday Mode</a>
+          <a href="#modes">Creator Mode</a>
+          <a href="#modes">DJ Mode</a>
+          <a href="#community">Beat Marketplace</a>
+          <a href="#pricing">Pricing</a>
         </div>
       </div>
       <div class="footer-col">
-        <h5>Community</h5>
+        <h3 class="footer-heading">Community</h3>
         <div class="footer-links">
-          <a href="#">Explore Mixes</a>
-          <a href="#">Beat Store</a>
-          <a href="#">Creator Profiles</a>
-          <a href="#">Blog</a>
-          <a href="#">Discord</a>
+          <a href="#community">Explore Mixes</a>
+          <a href="#community">Beat Store</a>
+          <a href="#community">Creator Profiles</a>
         </div>
       </div>
       <div class="footer-col">
-        <h5>Company</h5>
+        <h3 class="footer-heading">Company</h3>
         <div class="footer-links">
-          <a href="#">About</a>
-          <a href="#">Careers</a>
-          <a href="#">Press</a>
-          <a href="#">Contact</a>
-          <a href="#">API Docs</a>
+          <a href="#" data-contact-link>Contact</a>
+          <a href="/docs.html">API Docs</a>
+          <a href="/legal/licensing.html">Rights &amp; Licensing</a>
         </div>
       </div>
     </div>
     <div class="footer-bottom">
       <div class="footer-copy">© 2026 MixForge. All rights reserved.</div>
       <div class="footer-legal">
-        <a href="#">Privacy</a>
-        <a href="#">Terms</a>
-        <a href="#">Rights & Licensing</a>
-        <a href="#">Cookies</a>
+        <a href="/legal/privacy.html">Privacy</a>
+        <a href="/legal/terms.html">Terms</a>
+        <a href="/legal/licensing.html">Rights &amp; Licensing</a>
+        <a href="/legal/cookies.html">Cookies</a>
       </div>
     </div>
   </div>

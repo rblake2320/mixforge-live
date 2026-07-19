@@ -142,6 +142,7 @@ function defaultData() {
 
 export class JsonStore {
   constructor(filePath) {
+    this.kind = "json";
     this.filePath = filePath;
     this.data = null;
     this.load();

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — MixForge</title>
+<meta name="description" content="What MixForge collects, why, how long it is kept, and the choices you have.">
+<meta name="robots" content="index,follow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/legal/legal.css">
+</head>
+<body>
+<header class="legal-nav"><a href="/" class="brand"><span class="mix">Mix</span>Forge</a><a href="/" class="back">← Back to MixForge</a></header>
+<main class="legal">
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: 2026-07-17</p>
+
+<h2>What we collect</h2>
+<ul>
+<li><strong>Account data</strong> — email, display name, and a bcrypt hash of your password (never the password itself).</li>
+<li><strong>Your content</strong> — recordings, uploads, projects, and stem-job metadata you create.</li>
+<li><strong>Operational logs</strong> — structured audit/security logs of API activity. Email addresses in logs are stored as SHA-256 hashes, not plain text. Logs are retained for 90 days by default, then deleted.</li>
+<li><strong>Billing</strong> — handled by Stripe. Card numbers never touch MixForge servers; we store only your Stripe customer/subscription identifiers and plan status.</li>
+</ul>
+
+<h2>How your audio is processed</h2>
+<p>Stem separation is performed by our provider (StemSplit). When you request stems, the audio you submitted — or a time-limited link to it — is sent to that provider for processing on your behalf, and the separated results are returned to you. We do not use your audio to train models or share it with anyone else.</p>
+
+<h2>What we do not do</h2>
+<ul>
+<li>No advertising, no tracking pixels, no sale or rental of personal data.</li>
+<li>No third-party analytics scripts on this site.</li>
+<li>No cookies set by MixForge — see the <a href="/legal/cookies.html">cookie policy</a>.</li>
+</ul>
+
+<h2>Your choices</h2>
+<p>You can request a copy or deletion of your account data and content at <a href="mailto:privacy@mixforge.live">privacy@mixforge.live</a>. Password resets sign out all previously issued sessions. Content removed by moderation or takedown stops being served immediately.</p>
+
+<h2>Security</h2>
+<p>All traffic is served over HTTPS in production. Passwords are hashed with bcrypt, sessions are signed JWTs, write endpoints are rate-limited, and webhook payloads from Stripe and StemSplit are signature-verified before anything is applied.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:privacy@mixforge.live">privacy@mixforge.live</a> — we answer within 30 days.</p>
+</main>
+<footer class="legal-foot"><a href="/legal/privacy.html">Privacy</a><a href="/legal/terms.html">Terms</a><a href="/legal/licensing.html">Rights &amp; Licensing</a><a href="/legal/cookies.html">Cookies</a></footer>
+</body>
+</html>

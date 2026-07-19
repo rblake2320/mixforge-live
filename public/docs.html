@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Documentation — MixForge</title>
+<meta name="description" content="MixForge REST API reference: authentication, recordings, projects, stems, billing, trust &amp; safety, and operational endpoints.">
+<meta name="robots" content="index,follow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/legal/legal.css">
+</head>
+<body>
+<header class="legal-nav"><a href="/" class="brand"><span class="mix">Mix</span>Forge</a><a href="/" class="back">← Back to MixForge</a></header>
+<main class="legal">
+<h1>API Documentation</h1>
+<p class="updated">Base URL: your MixForge origin · Auth: <code>Authorization: Bearer &lt;token&gt;</code> from signup/login · All bodies JSON unless noted</p>
+
+<h2>Authentication</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>POST /api/auth/signup</code></td><td><code>{email, password, name?}</code> — password min 8 chars. Returns <code>user</code> + <code>token</code> (JWT, 14 days).</td></tr>
+<tr><td><code>POST /api/auth/login</code></td><td><code>{email, password}</code> → <code>user</code> + <code>token</code>.</td></tr>
+<tr><td><code>POST /api/auth/verify-email</code></td><td><code>{token}</code> from the verification email.</td></tr>
+<tr><td><code>POST /api/auth/forgot-password</code></td><td><code>{email}</code> — always 200 (no account enumeration).</td></tr>
+<tr><td><code>POST /api/auth/reset-password</code></td><td><code>{token, password}</code> — revokes all sessions issued before the reset.</td></tr>
+<tr><td><code>GET /api/me</code></td><td>Current user profile. Requires auth.</td></tr>
+</table>
+
+<h2>Catalog &amp; community</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>GET /api/beats</code></td><td>Beat catalog.</td></tr>
+<tr><td><code>GET /api/community</code></td><td>Community tracks.</td></tr>
+<tr><td><code>GET /api/plans</code></td><td>Plan catalog with pricing and features.</td></tr>
+</table>
+
+<h2>Recordings &amp; projects</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>POST /api/recordings</code></td><td><code>multipart/form-data</code> with an <code>audio</code> file (≤100&nbsp;MB, audio types only) + optional <code>title</code>, <code>beatId</code>, <code>preset</code>, <code>durationSeconds</code>.</td></tr>
+<tr><td><code>GET /api/recordings</code></td><td>Your recordings when authenticated; anonymous callers see only ownerless rows.</td></tr>
+<tr><td><code>GET /api/recordings/:id/audio</code></td><td>Streams the audio. Owner-only for owned recordings.</td></tr>
+<tr><td><code>POST /api/projects</code></td><td><code>{title, mode?, recordingId?, beatId?, preset?, settings?}</code>.</td></tr>
+<tr><td><code>GET /api/projects</code></td><td>Same visibility rules as recordings.</td></tr>
+</table>
+
+<h2>Stem separation</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>POST /api/stems/jobs</code></td><td>Source is one of: a <code>track</code> file upload (multipart, ≤150&nbsp;MB), a saved <code>recordingId</code>, or a <code>sourceUrl</code> (YouTube, SoundCloud, or direct http(s) audio link). Demo mode returns a labeled preview; real mode requires StemSplit configuration.</td></tr>
+<tr><td><code>GET /api/stems/jobs/:id</code></td><td>Job status + stem outputs when complete. Owner-only for owned jobs.</td></tr>
+<tr><td><code>POST /api/stems/webhook</code></td><td>StemSplit provider webhook (signature-verified).</td></tr>
+</table>
+
+<h2>Billing</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>POST /api/billing/checkout</code></td><td><code>{planId}</code> — <code>free</code> activates directly; paid plans return a Stripe Checkout URL (auth required). Demo mode returns a labeled no-payment response.</td></tr>
+<tr><td><code>POST /api/billing/webhook</code></td><td>Stripe webhook (signature-verified): checkout completion and subscription lifecycle.</td></tr>
+</table>
+
+<h2>Trust &amp; safety</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>POST /api/reports</code></td><td><code>{targetType: recording|community|user, targetId, reason, details?}</code>.</td></tr>
+<tr><td><code>POST /api/dmca</code></td><td>Takedown intake — see <a href="/legal/licensing.html">Rights &amp; Licensing</a> for required fields.</td></tr>
+<tr><td><code>GET /api/legal/terms</code> · <code>GET /api/legal/dmca</code></td><td>Machine-readable policy summaries.</td></tr>
+<tr><td><code>GET/POST /api/moderation/*</code></td><td>Admin-only (<code>x-admin-token</code> header): review reports/takedowns, set recording moderation status.</td></tr>
+</table>
+
+<h2>Operations</h2>
+<table>
+<tr><th>Endpoint</th><th>Description</th></tr>
+<tr><td><code>GET /api/health</code></td><td>Liveness: store + log-storage checks, active backends, version.</td></tr>
+<tr><td><code>GET /api/readiness</code></td><td>Launch checklist; 503 until production-ready.</td></tr>
+<tr><td><code>GET /api/diagnostics</code></td><td>Readiness + logging detail. Admin-gated in production.</td></tr>
+<tr><td><code>GET /api/logs/taxonomy</code></td><td>Structured log taxonomy.</td></tr>
+</table>
+
+<h2>Errors &amp; limits</h2>
+<p>Errors return <code>{"error": "message"}</code> with a meaningful status (400 validation, 401 auth, 403 ownership, 404 missing, 410 moderated, 429 rate-limited, 502/503 provider/config). Auth endpoints allow 40 requests / 15 min per IP; write endpoints (recordings, stems, checkout, reports, DMCA, contact) allow 30 / min per IP.</p>
+</main>
+<footer class="legal-foot"><a href="/legal/privacy.html">Privacy</a><a href="/legal/terms.html">Terms</a><a href="/legal/licensing.html">Rights &amp; Licensing</a><a href="/legal/cookies.html">Cookies</a></footer>
+</body>
+</html>

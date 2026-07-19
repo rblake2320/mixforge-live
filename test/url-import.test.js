@@ -115,6 +115,8 @@ before(async () => {
 after(async () => {
   await new Promise((r) => server.close(r));
   await new Promise((r) => demoServer.close(r));
+  await app.locals.logStore.close();
+  await demoApp.locals.logStore.close();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.rmSync(demoRoot, { recursive: true, force: true });
 });

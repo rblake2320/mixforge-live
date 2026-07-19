@@ -218,9 +218,10 @@
     modal.className = "mixforge-modal";
     modal.setAttribute("role", "dialog");
     modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-labelledby", "mixforge-modal-title");
     modal.innerHTML = `
       <div class="mixforge-modal-header">
-        <div class="mixforge-modal-title">${title}</div>
+        <div class="mixforge-modal-title" id="mixforge-modal-title">${title}</div>
         <button class="mixforge-modal-close" type="button" aria-label="Close">x</button>
       </div>
     `;
@@ -381,7 +382,7 @@
         </label>
         <label>
           Password
-          <input name="password" type="password" autocomplete="${activeMode === "signup" ? "new-password" : "current-password"}" minlength="6" required>
+          <input name="password" type="password" autocomplete="${activeMode === "signup" ? "new-password" : "current-password"}"${activeMode === "signup" ? ' minlength="8"' : ""} required>
         </label>
         <button class="btn btn-primary" type="submit" style="justify-content:center;">
           ${activeMode === "signup" ? "Create Free Account" : "Log In"}
@@ -779,6 +780,7 @@
       uploadInput.id = "mashupUploadInput";
       uploadInput.type = "file";
       uploadInput.accept = "audio/*";
+      uploadInput.setAttribute("aria-label", "Audio file to load");
       uploadInput.hidden = true;
       const uploadButton = document.createElement("button");
       uploadButton.className = "btn btn-secondary";
@@ -813,7 +815,16 @@
       linkInput.type = "url";
       linkInput.id = "mashupLinkInput";
       linkInput.placeholder = "Paste a YouTube / SoundCloud / audio link…";
+      linkInput.setAttribute("aria-label", "Audio link to import");
       linkInput.autocomplete = "off";
+      // Enter in the field behaves like clicking Import, so an empty submit
+      // gets the same visible "Paste a link first." feedback.
+      linkInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          linkButton.click();
+        }
+      });
       linkInput.style.cssText =
         "flex:1;min-width:220px;padding:10px 12px;border-radius:8px;border:1px solid var(--color-border,#333);background:var(--color-surface,#141414);color:inherit;";
       const linkButton = document.createElement("button");
@@ -1053,35 +1064,13 @@
   }
 
   function wireFooterLinks() {
-    const routes = {
-      "everyday mode": "#modes",
-      "creator mode": "#modes",
-      "dj mode": "#modes",
-      "beat marketplace": "#community",
-      "pricing": "#pricing",
-      "explore mixes": "#community",
-      "beat store": "#community",
-      "creator profiles": "#community",
-      "api docs": "/api/health"
-    };
-
-    document.querySelectorAll(".footer a").forEach((link) => {
-      const text = link.textContent.trim().toLowerCase();
-      if (text === "contact") {
-        link.addEventListener("click", (event) => {
-          event.preventDefault();
-          openContactForm("General");
-        });
-        return;
-      }
-      if (routes[text]) {
-        link.setAttribute("href", routes[text]);
-      } else if (link.getAttribute("href") === "#") {
-        link.addEventListener("click", (event) => {
-          event.preventDefault();
-          toast(`${link.textContent.trim()} page is queued for production content.`);
-        });
-      }
+    // Every footer link has a real destination in the markup; the only JS
+    // enhancement left is the contact link, which opens the in-app form.
+    document.querySelectorAll(".footer a[data-contact-link]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        openContactForm("General");
+      });
     });
   }
 

@@ -44,6 +44,10 @@ export const config = {
   },
   stemsplitApiKey: process.env.STEMSPLIT_API_KEY || "",
   stemsplitWebhookSecret: process.env.STEMSPLIT_WEBHOOK_SECRET || "",
+  // Self-hosted stem engine (stem-engine/engine.py). When set, stem jobs run
+  // on local GPU hardware instead of the hosted StemSplit provider.
+  stemEngineUrl: process.env.STEM_ENGINE_URL || "",
+  stemEngineApiKey: process.env.STEM_ENGINE_API_KEY || "",
   databaseUrl: process.env.DATABASE_URL || "",
   storeBackend: process.env.MIXFORGE_STORE || "",
   redisUrl: process.env.REDIS_URL || "",

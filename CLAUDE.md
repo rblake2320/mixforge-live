@@ -40,6 +40,12 @@ npm run smoke:stemsplit  # test real StemSplit key (needs STEMSPLIT_API_KEY set)
 - Production refuses to start with the default JWT secret (`assertMinimumProductionConfig`).
 - `/api/readiness` returns 503 until JWT, HTTPS base URL, writable storage, Stripe, StemSplit, and demo-mode-off all pass.
 - Detectors/step common_mistakes are matched globally — the coach never changes.
+- Every upload MUST flow through `storage.persist()`; a recording's `filePath` is only meaningful to the active storage backend. Passwords are 8+ chars; password reset revokes all prior JWTs via `passwordChangedAt`.
+- Anonymous callers only ever see ownerless rows from list endpoints (`listByOwner(collection, null)`), never `store.list()`.
+
+## Rules learned from the 2026-07-16 production pass
+1. **A selectable backend must be wired and integration-tested in the same PR that adds it.** The S3 adapter shipped with `persist()` implemented but never called — every "S3 mode" deploy would have silently served dead URLs. If a config flag selects a code path, a test must drive that path end to end (fakes are fine; an unreachable path is not).
+2. **Status/health endpoints must derive every answer from live config or live objects, never string literals.** The health probe reported `"local-json"` and `"0.1.0"` regardless of the running backend, which defeats the point of probing.
 
 ## Adding routes
 All routes live in `createApp()` in `src/app.js`. The middleware stack order matters:
@@ -69,6 +75,16 @@ STRIPE_PRICE_LABEL
 STEMSPLIT_API_KEY
 STEMSPLIT_WEBHOOK_SECRET
 ```
+
+## Local stem engine
+`stem-engine/engine.py` — self-hosted FastAPI + Demucs GPU service, selected by
+`STEM_ENGINE_URL` (takes precedence over StemSplit; provider `local-engine`).
+Client: `src/stem-engine-client.js` implements the StemSplit SDK surface;
+streaming-site imports throw. Status vocabulary is shared
+(PENDING/PROCESSING/COMPLETED/FAILED) so `mapStemSplitStatus` and the refresh
+path work unchanged. Run: `python -m uvicorn engine:app --port 9077` from
+`stem-engine/`. Requires torch+cu128 (Blackwell) and librosa ≥0.11
+(`librosa.feature.tempo`).
 
 ## Deployment
 - **Recommended**: Hostinger KVM 2 (2.25.184.107) + Cloudflare proxy. See `DEPLOYMENT.md` and `deploy/`.

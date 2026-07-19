@@ -1,0 +1,10 @@
+# MixForge local stem engine.
+# torch/torchaudio must match the local CUDA build — install those first, e.g.:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+demucs>=4.0.1
+fastapi>=0.115
+uvicorn>=0.30
+librosa>=0.10
+soundfile>=0.12
+numpy
+python-multipart

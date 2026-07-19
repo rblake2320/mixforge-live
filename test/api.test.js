@@ -43,6 +43,7 @@ async function withTempApp(overrides, fn) {
     if (isolatedServer) {
       await new Promise((resolve) => isolatedServer.close(resolve));
     }
+    await isolatedApp.locals.logStore.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
@@ -71,6 +72,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
+  await app.locals.logStore.close();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -332,6 +334,24 @@ describe("MixForge API", () => {
     assert.equal(response.status, 201);
     assert.equal(payload.contact.email, "buyer@example.com");
     assert.equal(payload.contact.message, "Interested in Label / Agency.");
+  });
+
+  it("rate-limits contact form spam like the other write endpoints", async () => {
+    await withTempApp({}, async (isolatedBaseUrl) => {
+      const codes = [];
+      for (let i = 0; i < 35; i++) {
+        const res = await fetch(`${isolatedBaseUrl}/api/contact`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "spam", email: `spam-${i}@example.com`, message: "buy now" })
+        });
+        codes.push(res.status);
+      }
+      assert.ok(
+        codes.filter((code) => code === 429).length >= 1,
+        `contact must hit the write limiter past 30/min, got: ${codes.join(",")}`
+      );
+    });
   });
 
   it("reports readiness status", async () => {
